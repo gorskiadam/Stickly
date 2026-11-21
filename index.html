@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Stickly</title>
+  <meta name="description" content="Get it out of your head and onto the wall.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F7F5F0">
+
+  <!-- Installable on a phone home screen; works offline (see sw.js). -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Stickly">
+
+  <!-- Apply a saved theme before first paint so the page never flashes the wrong one. -->
+  <script>
+    try {
+      var saved = JSON.parse(localStorage.getItem('stickly:v1'));
+      var theme = saved && saved.settings && saved.settings.theme;
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    } catch (e) { /* corrupted storage is handled in store.js */ }
+  </script>
+
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <!-- Shared artwork: the pushpin, drawn once and reused on every pinned note. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <radialGradient id="pin-cap" cx="0.36" cy="0.3" r="0.85">
+        <stop offset="0" stop-color="#FF9E8A"/>
+        <stop offset="0.45" stop-color="#DC4A32"/>
+        <stop offset="1" stop-color="#8E2416"/>
+      </radialGradient>
+      <linearGradient id="pin-neck" x1="0" x2="1">
+        <stop offset="0" stop-color="#E25A41"/>
+        <stop offset="1" stop-color="#9C2C1A"/>
+      </linearGradient>
+      <linearGradient id="pin-metal" x1="0" x2="1">
+        <stop offset="0" stop-color="#F4F4F4"/>
+        <stop offset="1" stop-color="#8A8A8A"/>
+      </linearGradient>
+      <symbol id="pin" viewBox="0 0 32 40">
+        <!-- shadow the head throws on the paper -->
+        <ellipse cx="21.5" cy="33" rx="7" ry="2.4" fill="#000" opacity="0.2"/>
+        <!-- the needle, entering the paper at (14, 33) -->
+        <path d="M14 33 17.6 19.5" stroke="url(#pin-metal)" stroke-width="1.7" stroke-linecap="round"/>
+        <g transform="rotate(15 17.5 20)">
+          <ellipse cx="17.5" cy="20" rx="5.4" ry="2.1" fill="#9A2C1B"/>
+          <path d="M14.5 19.6 15.6 11.5h3.8l1.1 8.1z" fill="url(#pin-neck)"/>
+          <ellipse cx="17.5" cy="11.4" rx="8" ry="4.6" fill="#8E2416"/>
+          <ellipse cx="17.5" cy="9.6" rx="8" ry="5" fill="url(#pin-cap)"/>
+          <ellipse cx="14.4" cy="7.8" rx="2.8" ry="1.3" fill="#fff" opacity="0.55"/>
+        </g>
+      </symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <g transform="rotate(-6 12 12)">
+          <path d="M5 3h14a2 2 0 0 1 2 2v9l-7 7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="#FFDD55"/>
+          <path d="M21 14h-5a2 2 0 0 0-2 2v5z" fill="#D9B02F"/>
+        </g>
+      </svg>
+      <span>Stickly</span>
+    </div>
+
+    <!-- Wall, Today or Tomorrow: the same notes, three ways (V goes round them; days.js). -->
+    <div id="view-switch" class="view-switch glass" role="group" aria-label="View" data-i18n-label="view">
+      <span class="view-switch-thumb" aria-hidden="true"></span>
+      <button type="button" data-view="wall" aria-pressed="true" title="Wall (V)">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linejoin="round" aria-hidden="true">
+          <rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1" transform="rotate(-4 4.8 4.8)"/>
+          <rect x="9" y="2.5" width="4.6" height="4.6" rx="1" transform="rotate(3 11.3 4.8)"/>
+          <rect x="2.5" y="9" width="4.6" height="4.6" rx="1" transform="rotate(2 4.8 11.3)"/>
+        </svg>
+        <span data-i18n="viewWall">Wall</span>
+      </button>
+      <button type="button" data-view="today" aria-pressed="false" title="Today (V)">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3.5 2.5h9a1 1 0 0 1 1 1v6.5l-3.5 3.5h-6.5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/><path d="M13.5 10h-2.5a1 1 0 0 0-1 1v2.5"/>
+        </svg>
+        <span data-i18n="viewToday">Today</span>
+      </button>
+      <button type="button" data-view="tomorrow" aria-pressed="false" title="Tomorrow (V)">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 11.5h11M4.5 11.5a3.5 3.5 0 0 1 7 0M8 3.5v2M3.6 6.2l1.2 1M12.4 6.2l-1.2 1"/>
+        </svg>
+        <span data-i18n="viewTomorrow">Tomorrow</span>
+      </button>
+    </div>
+
+    <div class="topbar-actions">
+      <!-- Can't choose? Picks one note for you and gives it a wiggle. -->
+      <button id="what-now" class="chip chip-quiet" type="button" hidden>
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 1.8v2.4M8 11.8v2.4M1.8 8h2.4M11.8 8h2.4M3.6 3.6l1.6 1.6M10.8 10.8l1.6 1.6M12.4 3.6l-1.6 1.6M5.2 10.8l-1.6 1.6"/>
+        </svg>
+        <span data-i18n="whatNow">What now?</span>
+      </button>
+      <!-- Progress: how many notes were finished today. Opens the list. -->
+      <button id="done-chip" class="chip" type="button" popovertarget="done-panel" hidden>
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m3 8.5 3.2 3.2L13 5"/>
+        </svg>
+        <span id="done-count"></span>
+      </button>
+
+    <!-- Settings: one tiny icon, one tiny popover. -->
+    <button id="settings-toggle" class="icon-button" type="button" popovertarget="settings" aria-label="Settings" data-i18n-label="settings">
+      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+        <path d="M3 6.5h7M14 6.5h3M3 13.5h3M10 13.5h7"/>
+        <circle cx="12" cy="6.5" r="2"/>
+        <circle cx="8" cy="13.5" r="2"/>
+      </svg>
+    </button>
+    </div>
+  </header>
+
+  <div id="done-panel" class="panel done-panel" popover aria-labelledby="done-title">
+    <h2 id="done-title" class="panel-title" data-i18n="doneTitle">Done today</h2>
+    <ul id="done-list" class="done-list"></ul>
+    <button id="end-day" class="button end-day" type="button" data-i18n="endDay">End the day</button>
+  </div>
+
+  <!-- Inside the trash: today's deleted notes, as crumpled balls (see binpeek.js). -->
+  <div id="bin-peek" class="bin-peek glass" popover aria-labelledby="bin-title">
+    <header class="bin-head">
+      <div class="bin-heading">
+        <h2 id="bin-title" class="bin-title" data-i18n="binTitle">Trash</h2>
+        <p class="bin-sub" data-i18n="binNightly">Empties itself at midnight</p>
+      </div>
+      <span id="bin-count" class="bin-count"></span>
+    </header>
+    <!-- the inside of the can: balls rest on its floor -->
+    <div class="bin-well">
+      <div id="bin-balls" class="bin-balls"></div>
+      <p id="bin-empty" class="bin-empty" data-i18n="binEmpty">The trash is empty.</p>
+    </div>
+    <footer class="bin-foot">
+      <p id="bin-hint" class="bin-hint" data-i18n="binHint">Hover to peek. Drag one out to put it back.</p>
+      <button id="bin-clear" class="bin-clear" type="button">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L12 4.5"/>
+        </svg>
+        <span data-i18n="emptyBin">Empty the trash</span>
+      </button>
+    </footer>
+  </div>
+  <!-- A ball from the trash, opened up in the air to show what it was (binpeek.js). -->
+  <div id="ball-preview" class="ball-preview" popover="manual" aria-hidden="true">
+    <div class="ball-preview-paper">
+      <span class="ball-preview-time"></span>
+      <p class="ball-preview-text"></p>
+      <span class="ball-preview-creases"></span>
+    </div>
+  </div>
+
+  <!-- What now?: one note picked for you, and why (whatnow.js). -->
+  <div id="whatnow-card" class="whatnow-card glass" popover aria-labelledby="whatnow-title">
+    <p id="whatnow-title" class="whatnow-title" data-i18n="tryThis">Try this one</p>
+    <p id="whatnow-text" class="whatnow-text"></p>
+    <p id="whatnow-why" class="whatnow-why"></p>
+    <div class="whatnow-actions">
+      <button id="whatnow-start" class="button button-primary" type="button" data-i18n="startFocus">Focus</button>
+      <button id="whatnow-another" class="button" type="button" data-i18n="another">Another</button>
+    </div>
+  </div>
+
+  <div id="settings" class="panel settings" popover aria-label="Settings" data-i18n-label="settings">
+    <div class="setting setting-name">
+      <label for="name-input" data-i18n="yourName">Your name</label>
+      <input id="name-input" class="name-input" type="text" maxlength="40" autocomplete="given-name"
+             spellcheck="false" placeholder="What should we call you?" data-i18n-placeholder="namePlaceholder">
+    </div>
+    <fieldset class="setting">
+      <legend data-i18n="theme">Theme</legend>
+      <div class="segmented">
+        <label><input type="radio" name="theme" value="system"><span data-i18n="themeAuto">Auto</span></label>
+        <label><input type="radio" name="theme" value="light"><span data-i18n="themeLight">Light</span></label>
+        <label><input type="radio" name="theme" value="dark"><span data-i18n="themeDark">Dark</span></label>
+      </div>
+    </fieldset>
+
+    <h3 class="settings-group" data-i18n="groupWall">Wall</h3>
+    <div class="setting setting-row">
+      <span id="limit-label" data-i18n="limit">Notes on the wall</span>
+      <div class="stepper" role="group" aria-labelledby="limit-label">
+        <button id="limit-down" type="button" aria-label="Fewer notes" data-i18n-label="fewer">&minus;</button>
+        <output id="limit-value" aria-live="polite">6</output>
+        <button id="limit-up" type="button" aria-label="More notes" data-i18n-label="more">+</button>
+      </div>
+    </div>
+
+    <fieldset class="setting setting-row">
+      <legend class="visually-hidden" data-i18n="clock">Clock</legend>
+      <span aria-hidden="true" data-i18n="clock">Clock</span>
+      <div class="segmented">
+        <label><input type="radio" name="clock" value="12"><span>12 h</span></label>
+        <label><input type="radio" name="clock" value="24"><span>24 h</span></label>
+      </div>
+    </fieldset>
+
+    <h3 class="settings-group" data-i18n="groupFocus">Focus</h3>
+    <fieldset class="setting setting-row">
+      <legend class="visually-hidden" data-i18n="focusFull">Full screen</legend>
+      <span aria-hidden="true" data-i18n="focusFull">Full screen</span>
+      <div class="segmented">
+        <label><input type="radio" name="focusfull" value="on"><span data-i18n="soundOn">On</span></label>
+        <label><input type="radio" name="focusfull" value="off"><span data-i18n="soundOff">Off</span></label>
+      </div>
+    </fieldset>
+
+    <h3 class="settings-group" data-i18n="groupGeneral">Sound and language</h3>
+    <fieldset class="setting setting-row">
+      <legend class="visually-hidden" data-i18n="sound">Sound</legend>
+      <span aria-hidden="true" data-i18n="sound">Sound</span>
+      <div class="segmented">
+        <label><input type="radio" name="sound" value="on"><span data-i18n="soundOn">On</span></label>
+        <label><input type="radio" name="sound" value="off"><span data-i18n="soundOff">Off</span></label>
+      </div>
+    </fieldset>
+    <!-- One language for both the interface and dictation. -->
+    <fieldset class="setting setting-row">
+      <legend class="visually-hidden" data-i18n="language">Language</legend>
+      <span aria-hidden="true" data-i18n="language">Language</span>
+      <div class="segmented">
+        <label><input type="radio" name="lang" value="en"><span lang="en">English</span></label>
+        <label><input type="radio" name="lang" value="pl"><span lang="pl">Polski</span></label>
+      </div>
+    </fieldset>
+
+    <h3 class="settings-group" data-i18n="groupData">Backup</h3>
+    <div class="setting settings-data">
+      <button id="data-export" class="settings-link" type="button" data-i18n="exportData">Save a backup</button>
+      <button id="data-import" class="settings-link" type="button" data-i18n="importData">Restore a backup…</button>
+      <input id="data-file" type="file" accept="application/json,.json" hidden>
+    </div>
+  </div>
+
+  <!-- The page: just the notes. One faint line when there are none. -->
+  <main class="wall-area">
+    <!-- The greeting for this time of day, with the user's name, above the notes (daytime.js). -->
+    <header class="hello">
+      <h1 id="greeting" class="greeting"></h1>
+      <!-- Today's date, smaller, under the greeting. -->
+      <p id="today" class="today">
+        <span id="today-long" class="today-long"></span>
+        <span id="today-short" class="today-short" aria-hidden="true"></span>
+      </p>
+    </header>
+    <ul id="wall" class="wall" aria-label="Your notes" data-i18n-label="wallLabel"></ul>
+    <p id="empty" class="empty" hidden></p>
+    <!-- A pile, opened up: the wall dims and the pile's notes spread out over it (ui.js, 6. Piles). -->
+    <div id="pile-spread" class="pile-spread" hidden>
+      <div class="pile-bar glass" role="toolbar" aria-labelledby="pile-spread-count">
+        <span id="pile-spread-count" class="pile-bar-count"></span>
+        <span class="pile-bar-hint" data-i18n="pileHint">Drag one out to take it off the pile.</span>
+        <button id="pile-unstack" class="pile-bar-button" type="button" data-i18n="unstack">Unstack</button>
+        <button id="pile-close" class="pile-bar-button is-primary" type="button" data-i18n="pileClose">Done</button>
+      </div>
+    </div>
+
+    <!-- Today: the same notes as a calm list (days.js). -->
+    <section id="today-view" class="day-view" hidden aria-labelledby="today-view-title">
+      <header class="day-head">
+        <h1 id="today-view-title" class="day-title" data-i18n="viewToday">Today</h1>
+        <p class="day-sub"><span id="today-view-date"></span> <span id="today-view-summary" class="day-summary"></span></p>
+        <div id="today-view-progress" class="day-progress" hidden><span></span></div>
+      </header>
+      <ul id="today-list" class="day-list" aria-label="On the wall" data-i18n-label="onTheWall"></ul>
+      <p id="today-empty" class="day-empty" data-i18n="todayEmpty">Nothing for today yet. What's on your mind?</p>
+      <div id="today-later" class="day-block" hidden>
+        <h2 class="day-block-title" data-i18n="later">Later</h2>
+        <ul id="today-later-list" class="day-list is-quiet"></ul>
+      </div>
+      <div id="today-done" class="day-block" hidden>
+        <h2 class="day-block-title" data-i18n="doneTitle">Done today</h2>
+        <ul id="today-done-list" class="day-list is-done"></ul>
+      </div>
+    </section>
+
+    <!-- Tomorrow: notes put aside for tomorrow; they come onto the wall in the morning (days.js). -->
+    <section id="tomorrow-view" class="day-view" hidden aria-labelledby="tomorrow-view-title">
+      <header class="day-head">
+        <h1 id="tomorrow-view-title" class="day-title" data-i18n="viewTomorrow">Tomorrow</h1>
+        <p class="day-sub"><span id="tomorrow-view-date"></span> <span id="tomorrow-view-summary" class="day-summary"></span></p>
+        <p class="day-hint" data-i18n="tomorrowHint">These come onto your wall tomorrow morning.</p>
+      </header>
+      <ul id="tomorrow-list" class="day-list" aria-label="For tomorrow" data-i18n-label="viewTomorrow"></ul>
+      <p id="tomorrow-empty" class="day-empty" data-i18n="tomorrowEmpty">Nothing for tomorrow yet. Type below to add one, or press M on a note to move it here.</p>
+    </section>
+  </main>
+
+  <!-- While a note is dragged: drop it anywhere along the left edge to throw it away. -->
+  <div id="drop-zone" class="drop-zone" aria-hidden="true">
+    <div class="drop-zone-label">
+      <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L12 4.5"/></svg>
+      <span data-i18n="dropToBin">Drop to throw away</span>
+    </div>
+  </div>
+
+  <form id="capture" class="capture" autocomplete="off">
+    <!-- The trash can: drop a note on it, or right-click a note and choose Delete. -->
+    <button id="trash" class="trash" type="button" aria-label="Trash" data-i18n-label="trash" aria-expanded="false" aria-controls="bin-peek">
+      <svg viewBox="0 0 40 46" width="45" height="52" aria-hidden="true">
+        <defs>
+          <!-- brushed steel: light down the middle, darker round the sides -->
+          <linearGradient id="bin-body" x1="0" x2="1">
+            <stop offset="0" stop-color="#5A5E63"/>
+            <stop offset="0.36" stop-color="#B4B8BC"/>
+            <stop offset="0.72" stop-color="#868A8F"/>
+            <stop offset="1" stop-color="#4E5257"/>
+          </linearGradient>
+          <linearGradient id="bin-lid" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#C9CCD0"/>
+            <stop offset="1" stop-color="#7C8085"/>
+          </linearGradient>
+        </defs>
+        <ellipse class="trash-shadow" cx="20" cy="43.8" rx="12" ry="1.8"/>
+        <g class="trash-can">
+          <path d="M7.5 15.5h25l-2.3 24.3a2.6 2.6 0 0 1-2.6 2.4H12.4a2.6 2.6 0 0 1-2.6-2.4z" fill="url(#bin-body)"/>
+          <path d="M14.6 20.5l.6 17M20 20.5v17M25.4 20.5l-.6 17" stroke="#33373B" stroke-opacity="0.4" stroke-width="1.7" stroke-linecap="round"/>
+          <path d="M8 17.6h24" stroke="#000" stroke-opacity="0.14" stroke-width="1.2"/>
+        </g>
+        <g class="trash-lid">
+          <path d="M16.6 9.2V8a1.8 1.8 0 0 1 1.8-1.8h3.2A1.8 1.8 0 0 1 23.4 8v1.2" fill="none" stroke="#4E5257" stroke-width="2"/>
+          <rect x="5" y="9.2" width="30" height="5.4" rx="2.7" fill="url(#bin-lid)"/>
+          <path d="M7.8 10.9h24.4" stroke="#fff" stroke-opacity="0.4" stroke-width="1" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </button>
+
+    <!-- A pane of glass with two steps that slide past each other (see capture.js). -->
+    <div id="capture-field" class="capture-field glass" data-step="text">
+      <p class="capture-hint capture-hint-time" aria-hidden="true" data-i18n="timeHint">← → pick   ↑ ↓ ±5 min   Enter adds   Esc goes back</p>
+
+      <p class="capture-hint capture-hint-text" aria-hidden="true" data-i18n="textHint">Enter adds   Tab sets a time</p>
+
+      <!-- Step 1: what needs doing. Enter (or the arrow button) adds it; Tab (or the clock) moves on to a time. -->
+      <div id="step-text" class="step step-text">
+        <span class="capture-plus" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+            <path d="M8 3v10M3 8h10"/>
+          </svg>
+        </span>
+        <label class="visually-hidden" for="capture-input" data-i18n="capturePlaceholder">What needs doing…</label>
+        <textarea id="capture-input" class="capture-input" name="task" rows="1"
+                  placeholder="What needs doing…" data-i18n-placeholder="capturePlaceholder"
+                  maxlength="400" enterkeyhint="done" autocapitalize="sentences" autofocus></textarea>
+
+        <div class="capture-tools">
+          <!-- The shortcut to get here, shown while the bar is idle. -->
+          <kbd class="capture-key" aria-hidden="true">N</kbd>
+
+          <!-- Give it a time: the same as pressing Tab (phones have no Tab key).
+               Shows the time when one is typed at the end, like "Run 20m". -->
+          <button id="time-open" class="time-open" type="button" hidden tabindex="-1"
+                  aria-label="Set a time" data-i18n-label="setTime">
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="10" cy="10.5" r="6.5"/>
+              <path d="M10 7v3.5l2.3 1.5M8.2 2.5h3.6"/>
+            </svg>
+            <span id="time-open-label" class="time-open-label"></span>
+          </button>
+
+          <!-- Shown only where the browser supports dictation (see capture.js). -->
+          <button id="mic" class="mic" type="button" hidden aria-pressed="false"
+                  aria-label="Dictate" data-i18n-label="dictate">
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="7.25" y="2.5" width="5.5" height="9.5" rx="2.75"/>
+              <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/>
+            </svg>
+          </button>
+
+          <!-- Add it: the same as Enter. -->
+          <button id="text-add" class="text-add" type="button" hidden tabindex="-1"
+                  aria-label="Add note" data-i18n-label="addNote">
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: how long it takes. Pick a length from the chips, or
+           fine-tune it; the line above says when it would be done. -->
+      <div id="step-time" class="step step-time" hidden inert>
+        <div class="time-top">
+          <span id="time-task" class="time-task"></span>
+          <span id="time-ends" class="time-ends" aria-live="polite"></span>
+        </div>
+        <div class="time-row">
+          <div id="time-picker" class="time-picker" role="spinbutton" tabindex="0"
+               aria-label="How long?" data-i18n-label="howLong"
+               aria-valuemin="0" aria-valuemax="480" aria-valuenow="15">
+            <div id="time-presets" class="time-presets"></div>
+          </div>
+          <div class="time-tune" role="group" aria-label="Fine-tune" data-i18n-label="fineTune">
+            <button id="time-less" class="time-step" type="button" tabindex="-1"
+                    aria-label="5 minutes less" data-i18n-label="lessTime5">&minus;</button>
+            <button id="time-more" class="time-step" type="button" tabindex="-1"
+                    aria-label="5 minutes more" data-i18n-label="moreTime5">+</button>
+          </div>
+          <button id="time-add" class="time-add" type="button" aria-label="Add note" data-i18n-label="addNote">
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 10h11M11 5.5 15.5 10 11 14.5"/>
+            </svg>
+          </button>
+        </div>
+        <span class="time-fill" aria-hidden="true"></span>
+      </div>
+    </div>
+
+    <!-- The Later pile: a small stack that shows only a count. -->
+    <button id="pile" class="pile" type="button" popovertarget="later" hidden>
+      <span id="pile-count">+0</span>
+    </button>
+  </form>
+
+  <div id="later" class="panel later" popover aria-labelledby="later-title">
+    <h2 id="later-title" class="panel-title" data-i18n="later">Later</h2>
+    <p id="later-hint" class="panel-hint"></p>
+    <ul id="later-list" class="later-list"></ul>
+  </div>
+
+  <!-- Stickly's right-click menu (see menu.js). -->
+  <div id="menu" class="menu glass" popover="manual" role="menu" aria-label="Note actions" data-i18n-label="noteMenu"></div>
+
+  <!-- Focus view: one note, the whole screen, nothing else (see focus.js). -->
+  <dialog id="focus" class="focus" aria-label="Focus" data-i18n-label="focusTitle">
+    <header class="focus-bar">
+      <p class="focus-where"><span id="focus-when"></span><span id="focus-position" class="focus-position"></span></p>
+      <div class="focus-bar-tools">
+        <button id="focus-full" class="icon-button" type="button" aria-label="Full screen" data-i18n-label="fullScreen" title="Full screen (F)">
+          <svg class="icon-enter" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>
+          <svg class="icon-exit" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5"/></svg>
+        </button>
+        <button id="focus-close" class="icon-button" type="button" aria-label="Back to the wall" data-i18n-label="backToWall" title="Esc">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="focus-stage">
+      <button id="focus-prev" class="focus-turn" type="button" aria-label="Previous note" data-i18n-label="prevNote">
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>
+      </button>
+      <div class="focus-center">
+        <p id="focus-note" class="focus-note"></p>
+        <!-- Timer: counts down from the note's time, or up if it has none. Space starts/pauses. -->
+        <div class="timer">
+          <p id="timer-clock" class="timer-clock">00:00</p>
+          <div class="timer-track"><span id="timer-fill" class="timer-fill"></span></div>
+          <p id="timer-label" class="timer-label"></p>
+        </div>
+        <div class="focus-actions">
+          <button id="timer-toggle" class="button button-primary" type="button">Start</button>
+          <button id="focus-done" class="button" type="button" data-i18n="done">Done</button>
+        </div>
+      </div>
+      <button id="focus-next" class="focus-turn" type="button" aria-label="Next note" data-i18n-label="nextNote">
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+      </button>
+    </div>
+
+    <footer class="focus-foot">
+      <p id="focus-up-next" class="focus-up-next"></p>
+      <p class="focus-keys" aria-hidden="true" data-i18n="focusKeys">Space start · ← → other notes · D done · F full screen · Esc back</p>
+    </footer>
+  </dialog>
+
+  <!-- First open of a new day: a quiet good-morning card (newday.js). -->
+  <dialog id="newday" class="newday" aria-labelledby="newday-greeting">
+    <p id="newday-date" class="newday-date"></p>
+    <h2 id="newday-greeting" class="newday-greeting">Good morning</h2>
+    <!-- Yesterday never got its end-of-day sweep: offer it. -->
+    <div id="newday-yesterday" class="newday-yesterday" hidden>
+      <p id="newday-done" class="newday-done"></p>
+      <button id="newday-end" class="newday-end" type="button">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M13 9.5A5.5 5.5 0 1 1 6.5 3a4.3 4.3 0 0 0 6.5 6.5z"/>
+        </svg>
+        <span data-i18n="endYesterday">End yesterday</span>
+      </button>
+    </div>
+    <p id="newday-arrived" class="newday-arrived" hidden></p>
+    <p id="newday-text" class="newday-text" data-i18n="newDay">Keep yesterday's notes or start fresh?</p>
+    <div id="newday-actions" class="newday-actions">
+      <button id="newday-keep" class="button button-primary" type="button" autofocus data-i18n="keep">Keep</button>
+      <button id="newday-fresh" class="button" type="button" data-i18n="startFresh">Start fresh</button>
+    </div>
+    <button id="newday-go" class="button button-primary newday-go" type="button" hidden data-i18n="startDay">Start the day</button>
+  </dialog>
+
+  <!-- Quiet confirmation with Undo: a small pane of glass, like the capture bar.
+       Stays about 5 seconds (longer while the pointer is on it). (Announced via #live.) -->
+  <div id="toast" class="toast glass" popover="manual">
+    <span id="toast-icon" class="toast-icon" aria-hidden="true"></span>
+    <span id="toast-text" class="toast-text"></span>
+    <button id="toast-undo" class="toast-action" type="button">
+      <span id="toast-label">Undo</span>
+      <kbd id="toast-key" class="toast-key"></kbd>
+    </button>
+    <span id="toast-timer" class="toast-timer" aria-hidden="true"></span>
+  </div>
+
+  <!-- Read out when a note gets keyboard focus. -->
+  <p id="note-help" class="visually-hidden" data-i18n="noteHelp">Press Enter to edit, D when done, F to focus, P to pin, C to change color, + or − to change the time, M to move to tomorrow, L to move to Later, Backspace to delete. Shift and the arrow keys move it.</p>
+
+  <!-- Screen-reader announcements ("Note added", etc.). -->
+  <div id="live" class="visually-hidden" aria-live="polite"></div>
+</body>
+</html>

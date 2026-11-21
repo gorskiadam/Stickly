@@ -1,0 +1,2711 @@
+/* ==========================================================================
+   Stickly — styles
+   1. Tokens (light / dark)   2. Base   3. Wall + notes
+   4. Capture bar             5. Small UI   6. Motion preferences
+   ========================================================================== */
+
+/* 1. Tokens --------------------------------------------------------------- */
+
+:root {
+  --bg: #F7F5F0;
+  --text: #1A1A1A;
+  --text-muted: #6F6A60;
+  --surface: #FFFFFF;
+  --border: #E0DCD2;
+  --note: #FFE36E;
+  --note-text: #1A1A1A;
+  --note-shadow: rgba(60, 45, 0, 0.28);
+  --paper-yellow: var(--note);
+  --paper-pink: #FFC4D3;
+  --paper-blue: #B8E1F8;
+  --paper-green: #CFEBA8;
+  --note-ambient: rgba(60, 45, 0, 0.16);       /* soft shadow all round a note */
+  --note-edge: rgba(255, 255, 255, 0.55);      /* light catching the top edge */
+  --field-border: #8E897E;                     /* 3:1 against the page, for inputs */
+  --bar-shadow: 0 1px 2px rgba(40, 30, 0, 0.05), 0 8px 24px rgba(40, 30, 0, 0.06);
+  --panel-shadow: 0 2px 6px rgba(40, 30, 0, 0.06), 0 16px 40px rgba(40, 30, 0, 0.12);
+
+  --font-ui: Inter, Geist, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* A warmer, human face for notes: readable serifs that ship with the OS. */
+  --font-note: "Iowan Old Style", Charter, "Bitstream Charter", "Palatino Linotype", Georgia, serif;
+
+  --note-size: 196px;
+  --bar-height: 54px;
+
+  /* Paper grain: a tiny tile of generated noise, laid very faintly over the page
+     and the notes. --keyboard is set by capture.js while a phone keyboard is open. */
+  --grain-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain: 0.07;
+  --keyboard: 0px;
+
+  /* Liquid glass, for the capture bar: translucent, blurred, lit from above. */
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-rim: rgba(255, 255, 255, 0.95);
+  --glass-edge: color-mix(in srgb, #8E897E 55%, transparent);
+  --glass-shadow: 0 1px 2px rgba(40, 30, 0, 0.06), 0 12px 32px rgba(40, 30, 0, 0.13);
+}
+
+/* Dark values: used when the system is dark (unless the user forced light)… */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E0E0E;
+    --text: #EDEDED;
+    --text-muted: #9A9A9A;
+    --surface: #191919;
+    --border: #2C2C2C;
+    --note: #F2D65C;
+    --paper-pink: #EDB3C3;
+    --paper-blue: #A6CFE8;
+    --paper-green: #BCDA97;
+    --note-shadow: rgba(0, 0, 0, 0.9);
+    --note-ambient: rgba(0, 0, 0, 0.7);
+    --note-edge: rgba(255, 255, 255, 0.4);
+    --field-border: #6E6E6E;
+    --glass-bg: rgba(44, 44, 46, 0.55);
+    --glass-rim: rgba(255, 255, 255, 0.22);
+    --glass-edge: rgba(255, 255, 255, 0.16);
+    --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 36px rgba(0, 0, 0, 0.55);
+    --note-shadow: rgba(0, 0, 0, 0.6);
+    --bar-shadow: none;
+    --panel-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    --grain: 0; /* deep black stays clean */
+  }
+}
+/* …and when the user forced dark. Keep the two blocks in sync. */
+:root[data-theme="dark"] {
+  --bg: #0E0E0E;
+  --text: #EDEDED;
+  --text-muted: #9A9A9A;
+  --surface: #191919;
+  --border: #2C2C2C;
+  --note: #F2D65C;
+  --paper-pink: #EDB3C3;
+  --paper-blue: #A6CFE8;
+  --paper-green: #BCDA97;
+  --note-shadow: rgba(0, 0, 0, 0.9);
+  --note-ambient: rgba(0, 0, 0, 0.7);
+  --note-edge: rgba(255, 255, 255, 0.4);
+  --field-border: #6E6E6E;
+  --glass-bg: rgba(44, 44, 46, 0.55);
+  --glass-rim: rgba(255, 255, 255, 0.22);
+  --glass-edge: rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 36px rgba(0, 0, 0, 0.55);
+  --note-shadow: rgba(0, 0, 0, 0.6);
+  --bar-shadow: none;
+  --panel-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --grain: 0;
+}
+
+/* 2. Base ----------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  /* Keep scrolled-to notes clear of the fixed capture bar. */
+  scroll-padding-bottom: 120px;
+  -webkit-text-size-adjust: 100%;
+  background: var(--bg);
+}
+
+/* The grain sits between the page colour and everything else. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--grain-image);
+  opacity: var(--grain);
+  pointer-events: none;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 3. Wall + notes --------------------------------------------------------- */
+
+/* Registering --fold (the size of a note's curled corner) lets it animate smoothly. */
+@property --fold {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 24px;
+}
+
+.wall-area {
+  position: relative;
+  min-height: 100dvh;
+}
+
+/* The greeting, big and black, with today's date under it, centered above
+   the notes. */
+.hello {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 58px);
+  left: 16px;
+  right: 16px;
+  text-align: center;
+  pointer-events: none;
+  animation: fade-in 500ms ease both;
+}
+.greeting {
+  margin: 0;
+  /* room above and below the letters, so descenders (g, y, p) are never clipped */
+  padding: 0.06em 0 0.18em;
+  color: var(--text);
+  font: 600 38px/1.25 var(--font-note);
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today {
+  margin: 0;
+  color: var(--text-muted);
+  font: 500 14px/1.3 var(--font-ui);
+}
+.today-short { display: none; }
+@media (max-width: 520px) {
+  .hello { top: calc(env(safe-area-inset-top) + 52px); }
+  .greeting { font-size: 28px; }
+  .today { font-size: 13px; }
+  .today-long { display: none; }
+  .today-short { display: inline; }
+}
+
+/* Empty page: a single faint line in the middle. */
+.empty {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0 24px 80px;
+  color: var(--text-muted);
+  font-size: 17px;
+  text-align: center;
+  pointer-events: none;
+  animation: fade-in 400ms ease both;
+}
+.empty[hidden] { display: none; }
+
+/* The wall is the whole page: every note sits exactly where it was put
+   (ui.js sets left / top), and they may overlap. */
+.wall {
+  --note-size: min(196px, calc((100vw - 54px) / 2));
+  position: relative;
+  list-style: none;
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+}
+@media (min-width: 720px) {
+  .wall { --note-size: 196px; }
+}
+
+/* The <li> carries position, tilt and the shadow; the paper sits on top. */
+.note {
+  --paper: var(--paper-yellow);
+  --radius: 10px;
+  --fold: 24px; /* size of the curled corner */
+  position: absolute;
+  width: var(--note-size);
+  aspect-ratio: 1;
+  transform: rotate(var(--rot, 0deg));
+  border-radius: var(--radius);
+  /* The shadow follows the note's real outline, curled corner and pin included. */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)) drop-shadow(0 7px 12px var(--note-ambient));
+  cursor: grab;
+  touch-action: pan-y; /* vertical scroll stays native; sideways is ours (swipe) */
+  -webkit-user-select: none;
+          user-select: none;
+  -webkit-touch-callout: none;
+}
+.note[data-color="pink"],  .focus-note[data-color="pink"]  { --paper: var(--paper-pink); }
+.note[data-color="blue"],  .focus-note[data-color="blue"]  { --paper: var(--paper-blue); }
+.note[data-color="green"], .focus-note[data-color="green"] { --paper: var(--paper-green); }
+
+/* The corner curls further when you reach for it. */
+.note:has(.note-peel:hover),
+.note:has(.note-peel:focus-visible) { --fold: 40px; }
+
+/* pointer-events: none lets drag.js see which note is underneath the lifted one. */
+.note.is-dragging { z-index: 9999 !important; cursor: grabbing; pointer-events: none; }
+.note.is-dragging::before { box-shadow: 0 24px 22px -6px var(--note-shadow); }
+.note.is-leaving { z-index: 9998 !important; pointer-events: none; }
+
+/* A real sticky note lifts at the bottom edge: the shadow lives there only. */
+.note::before {
+  content: "";
+  position: absolute;
+  left: 6%;
+  right: 9%;
+  bottom: 4px;
+  height: 30%;
+  box-shadow: 0 10px 12px -3px var(--note-shadow);
+  transition: box-shadow 180ms ease;
+}
+
+/* Reaching for a note lifts it a little: the shadow deepens, nothing jumps. */
+@media (hover: hover) {
+  .note:hover::before { box-shadow: 0 15px 15px -4px var(--note-shadow); }
+}
+
+.note-paper {
+  position: relative;
+  height: 100%;
+  padding: 22px 18px 10px;
+  border-radius: var(--radius);
+  background:
+    /* light falls from the top-left: a sheen there, a shade towards the curl */
+    linear-gradient(155deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 32%,
+                            rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.1) 100%),
+    var(--paper);
+  /* a bright top edge and a dark bottom edge give the sheet some thickness */
+  box-shadow: inset 0 1px 0 var(--note-edge), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  color: var(--note-text);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* The bottom-right corner is cut away where the paper curls up. */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--fold)),
+                     calc(100% - var(--fold)) 100%, 0 100%);
+  transition: clip-path 180ms ease, background-color 200ms ease;
+}
+
+/* The same grain as the page, on the paper itself. */
+.note-paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain-image);
+  opacity: 0.09;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+/* How long the note takes: a small line above its text. */
+.note-time {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -6px 0 7px;
+  color: rgba(26, 26, 26, 0.62);
+  font: 600 12px/1 var(--font-ui);
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.note-time[hidden] { display: none; }
+
+.note-text {
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  font-family: var(--font-note);
+  font-size: 18px;
+  line-height: 1.32;
+  white-space: pre-line; /* a note can have a few lines */
+  overflow-wrap: anywhere;
+  /* Long text fades out gently instead of being cut off. */
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 1.8em), transparent);
+          mask-image: linear-gradient(180deg, #000 calc(100% - 1.8em), transparent);
+}
+
+/* Footer: paper colours, offered only when you reach for the note. */
+.note-foot {
+  flex: none;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.note:hover .note-foot,
+.note:focus .note-foot,
+.note:focus-within .note-foot { opacity: 1; }
+
+/* Focus button: open this one note on its own. Sits clear of the curled corner. */
+.note-focus {
+  position: relative;
+  margin-left: auto;
+  margin-right: 30px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--note-text);
+  opacity: 0.55;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.note-focus::after { content: ""; position: absolute; inset: -6px; }
+.note-focus:hover { opacity: 1; }
+.note-focus:focus-visible { outline-color: var(--note-text); }
+
+.note-swatch {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+}
+.note-swatch::after { content: ""; position: absolute; inset: -6px; } /* bigger touch target */
+.note-swatch[data-color="yellow"] { --swatch: var(--paper-yellow); }
+.note-swatch[data-color="pink"]   { --swatch: var(--paper-pink); }
+.note-swatch[data-color="blue"]   { --swatch: var(--paper-blue); }
+.note-swatch[data-color="green"]  { --swatch: var(--paper-green); }
+.note-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px rgba(0, 0, 0, 0.55); }
+.note-swatch:focus-visible { outline-color: var(--note-text); }
+
+/* Pushpin: a ghost of it shows where to pin; pinned notes get the real thing.
+   Its needle meets the paper just below the top edge, at the centre. */
+.note-pin {
+  position: absolute;
+  top: -29px;
+  left: calc(50% - 19px);
+  width: 43px;
+  height: 54px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+  filter: grayscale(1);
+  transition: opacity 140ms ease;
+}
+.note-pin svg { display: block; width: 100%; height: 100%; }
+.note:hover .note-pin,
+.note:focus .note-pin,
+.note:focus-within .note-pin { opacity: 0.32; }
+.note-pin:hover,
+.note-pin:focus-visible { opacity: 0.7 !important; }
+.note.is-pinned .note-pin { opacity: 1 !important; filter: none; }
+/* played once, when the pin goes in (not on every redraw) */
+.note.is-pinning .note-pin svg { animation: pin-in 200ms cubic-bezier(0.3, 0, 0.3, 1) both; }
+
+@keyframes pin-in {
+  from { transform: translate(3px, -9px); opacity: 0; }
+}
+
+/* Curled corner: a generous hit area with the curl drawn inside it.
+   Top-left half of the square is the underside of the paper rolling over;
+   bottom-right half is the shadow it throws on the wall. */
+.note-peel {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 var(--radius) 0;
+  background: none;
+  cursor: pointer;
+}
+
+.note-peel::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--fold);
+  height: var(--fold);
+  border-top-left-radius: calc(var(--radius) * 0.9);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--paper) 55%, #fff) 0%,
+    color-mix(in srgb, var(--paper) 78%, #fff) 22%,
+    color-mix(in srgb, var(--paper) 94%, #000) 40%,
+    color-mix(in srgb, var(--paper) 78%, #000) 50%,
+    rgba(0, 0, 0, 0.28) 50%,
+    rgba(0, 0, 0, 0.08) 64%,
+    transparent 80%);
+  filter: drop-shadow(-1.5px -1.5px 2px rgba(0, 0, 0, 0.16));
+  transition: width 180ms ease, height 180ms ease;
+}
+
+.note-peel:focus-visible { outline-offset: -4px; }
+
+/* Editing in place */
+.note.is-editing { cursor: text; }
+.note.is-editing .note-paper { box-shadow: inset 0 0 0 1.5px rgba(26, 26, 26, 0.45); }
+.note.is-editing .note-text {
+  -webkit-user-select: text;
+          user-select: text;
+  -webkit-mask-image: none;
+          mask-image: none;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  outline: none;
+  cursor: text;
+}
+
+@media (max-width: 719px) {
+  .note-paper { padding: 18px 14px 6px; }
+  .note-text { font-size: 17px; }
+}
+
+/* New notes settle onto the wall. */
+.note.is-new { animation: note-drop 560ms var(--spring-settle, cubic-bezier(0.2, 0.7, 0.2, 1)) both; }
+
+/* Pressed onto the wall from just above: it comes down a touch big and
+   tilted, then the spring flattens it into place. */
+@keyframes note-drop {
+  from { opacity: 0; transform: translateY(-16px) rotate(calc(var(--rot, 0deg) - 2.5deg)) scale(1.06); }
+  25%  { opacity: 1; }
+  to   { opacity: 1; transform: translateY(0) rotate(var(--rot, 0deg)) scale(1); }
+}
+
+/* 4. Capture bar ---------------------------------------------------------- */
+
+.capture {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--keyboard);
+  z-index: 3;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+/* Liquid glass: the page shows through, blurred and brightened; a bright rim
+   along the top edge and a soft shadow underneath make it a raised pane. */
+.glass {
+  position: relative;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+          backdrop-filter: blur(22px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--glass-shadow);
+}
+/* a sheen across the top half, like light on curved glass */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 55%);
+  pointer-events: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .glass::before { opacity: 0.25; }
+}
+:root[data-theme="dark"] .glass::before { opacity: 0.25; }
+
+.capture-field {
+  pointer-events: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 600px;
+  display: grid;
+  border-radius: 28px;
+  transition: box-shadow 160ms ease;
+}
+.capture-field:focus-within {
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--field-border),
+    0 0 0 4px color-mix(in srgb, var(--text) 8%, transparent),
+    var(--glass-shadow);
+}
+
+/* Both steps share one cell, so they can slide past each other. */
+.step {
+  grid-area: 1 / 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 58px;
+}
+.step[hidden] { display: none; }
+
+/* Step 1 lines up along the bottom, so the tools stay put as the text grows. */
+.step-text { align-items: flex-end; cursor: text; }
+
+/* A small "+" at the start: this bar is where notes come from. */
+.capture-plus {
+  position: absolute;
+  left: 15px;
+  bottom: 15px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  pointer-events: none;
+  transition: color 160ms ease, background-color 160ms ease, rotate 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.capture-field:focus-within .capture-plus { color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent); }
+.capture-field.has-text .capture-plus { rotate: 90deg; }
+
+.capture-input {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 58px;
+  max-height: 126px; /* about four lines, then it scrolls */
+  margin: 0;
+  padding: 17px 8px 17px 54px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 17px; /* 16px+ stops iOS zooming on focus */
+  line-height: 24px;
+  resize: none;
+  overflow: hidden; /* capture.js turns scrolling on only past four lines */
+  outline: none;
+}
+.capture-input::placeholder { color: var(--text-muted); opacity: 1; }
+
+/* The tools at the right end: the shortcut key, the clock, the mic, add. */
+.capture-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 9px 9px 0;
+}
+
+/* "N": how to get here from anywhere. Only while the bar is idle. */
+.capture-key {
+  display: none;
+  min-width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font: 600 11.5px/20px var(--font-ui);
+  text-align: center;
+}
+@media (hover: hover) and (pointer: fine) {
+  .capture-field:not(:focus-within):not(.has-text) .capture-key { display: block; animation: fade-in 200ms ease both; }
+}
+
+/* Clock: choose a time for this note (the same as Tab). */
+.time-open {
+  height: 40px;
+  min-width: 40px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 600 13px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  animation: fade-in 160ms ease both;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.time-open:not(.has-time) { padding: 0; }
+.time-open[hidden] { display: none; }
+.time-open:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+/* A time was typed ("Run 20m"): the clock shows it. */
+.time-open.has-time { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.time-open-label:empty { display: none; }
+
+/* Mic. */
+.mic {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.mic[hidden] { display: none; }
+.mic:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+
+/* Add: a dark round button that pops in once there's something to add. */
+.text-add {
+  width: 40px;
+  height: 40px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  animation: add-in 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition: transform 140ms ease;
+}
+.text-add[hidden] { display: none; }
+.text-add:hover { transform: translateY(-1px); }
+.text-add:active { transform: scale(0.94); }
+@keyframes add-in {
+  from { opacity: 0; transform: scale(0.6); }
+}
+
+/* Listening: the mic fills in and a soft ring breathes out of it. */
+.is-listening .mic {
+  background: var(--text);
+  color: var(--bg);
+  animation: mic-breathe 1.6s ease-in-out infinite;
+}
+@keyframes mic-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--text) 25%, transparent); }
+  50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--text) 0%, transparent); }
+}
+
+/* Step 2: how long, and when. Two lines: the task with when it would be
+   done, then a row of lengths to pick from, the fine-tune, Plan and add. */
+.step-time {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 9px 9px 18px;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.time-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding-right: 8px;
+}
+.time-task {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+  font: 16px/1.3 var(--font-note);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.time-ends {
+  flex: none;
+  color: var(--text-muted);
+  font: 500 12.5px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  transition: color 160ms ease;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The lengths: a row of soft chips, the chosen one filled in. Scrolls
+   sideways on a narrow bar. */
+.time-picker {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: -6px;
+  border-radius: 999px;
+  outline: none;
+}
+.time-picker:focus-visible { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--text) 30%, transparent); }
+.time-presets {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+}
+.time-presets::-webkit-scrollbar { display: none; }
+.time-chip {
+  flex: none;
+  height: 32px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+  font: 500 13px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.time-chip:hover { background: color-mix(in srgb, var(--text) 11%, transparent); }
+.time-chip[aria-pressed="true"] { background: var(--text); color: var(--bg); font-weight: 600; }
+.time-chip.is-custom { outline: 1px dashed color-mix(in srgb, var(--text) 35%, transparent); outline-offset: -1px; }
+.time-chip.is-custom[aria-pressed="true"] { outline: 0; }
+
+.time-tune {
+  flex: none;
+  display: flex;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.time-step {
+  width: 30px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: 400 18px/1 var(--font-ui);
+  cursor: pointer;
+}
+.time-step:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 9%, transparent); }
+.time-step:disabled { opacity: 0.3; cursor: default; }
+
+.time-add {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 160ms var(--spring-pop, ease);
+}
+.time-add:hover { transform: translateX(2px); }
+.time-add:active { transform: scale(0.94); }
+
+/* A hairline along the bottom that fills as the time grows (full at an hour). */
+.time-fill {
+  position: absolute;
+  left: 22px;
+  bottom: 0;
+  height: 2px;
+  width: calc((100% - 44px) * var(--fill-ratio, 0));
+  transition: width 260ms var(--spring-glide, ease);
+  border-radius: 2px;
+  background: var(--text);
+  opacity: 0.28;
+}
+
+/* Keyboard hint above the bar while choosing a time (not on touch screens). */
+.capture-hint {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: center;
+  white-space: pre;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .capture-field[data-step="time"] .capture-hint-time,
+  .capture-field[data-step="text"].has-text:focus-within .capture-hint-text { opacity: 1; transform: none; }
+}
+
+@media (max-width: 480px) {
+  /* Phones: the chips scroll; the fine-tune and Plan's word make room, and
+     the trash and Later step aside so the bar gets the whole width. */
+  .capture:has(.capture-field[data-step="time"]) .trash,
+  .capture:has(.capture-field[data-step="time"]) .pile { display: none; }
+  .time-top { flex-wrap: wrap; row-gap: 0; }
+  .time-tune { display: none; }
+  .step-time { padding-left: 14px; }
+}
+
+/* 5. Small UI ------------------------------------------------------------- */
+
+/* Top: the name on the left; progress and settings on the right. No bar behind them. */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: calc(56px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) calc(10px + env(safe-area-inset-right)) 0
+           calc(20px + env(safe-area-inset-left));
+  pointer-events: none; /* only the name and the buttons take clicks */
+}
+.topbar > * { pointer-events: auto; }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Progress chip: a tick and today's count. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.chip[hidden] { display: none; }
+.chip:hover { border-color: var(--text-muted); }
+/* What now?: lighter than the progress chip, no border until hovered. */
+.chip-quiet { border-color: transparent; background: none; color: var(--text-muted); }
+.chip-quiet:hover { color: var(--text); background: var(--surface); border-color: var(--border); }
+
+/* End the day: at the bottom of the Done today list. */
+.end-day { width: 100%; margin-top: 10px; }
+
+/* End-of-day sweep: the page dims, today's done notes fly off one by one,
+   then a small card sums up the day (sweep.js). */
+.sweep {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+          backdrop-filter: blur(6px);
+  animation: fade-in 220ms ease both;
+}
+.sweep.is-closing { opacity: 0; transition: opacity 200ms ease; }
+.sweep-stack { position: relative; width: 168px; height: 168px; }
+.sweep-note {
+  --paper: var(--paper-yellow);
+  position: absolute;
+  inset: 0;
+  padding: 18px 16px;
+  border-radius: 10px;
+  background: linear-gradient(170deg, rgba(255, 255, 255, 0.22), rgba(0, 0, 0, 0.04)), var(--paper);
+  color: var(--note-text);
+  font: 17px/1.3 var(--font-note);
+  overflow: hidden;
+  transform: translateY(var(--lift)) rotate(var(--tilt));
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12), 0 10px 18px -6px var(--note-shadow);
+}
+.sweep-note[data-color="pink"]  { --paper: var(--paper-pink); }
+.sweep-note[data-color="blue"]  { --paper: var(--paper-blue); }
+.sweep-note[data-color="green"] { --paper: var(--paper-green); }
+.sweep-card {
+  grid-area: 1 / 1;
+  min-width: 260px;
+  max-width: calc(100vw - 32px);
+  padding: 28px 28px 22px;
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--panel-shadow);
+  text-align: center;
+  animation: sweep-card-in 360ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+@keyframes sweep-card-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.94); }
+}
+.sweep-count {
+  margin: 0;
+  font: 600 56px/1 var(--font-note);
+  letter-spacing: -0.03em;
+}
+.sweep-title { margin: 8px 0 0; font-size: 17px; font-weight: 600; }
+.sweep-time { margin: 6px 0 0; color: var(--text-muted); font-size: 14px; }
+.sweep-card .button { margin-top: 20px; min-width: 120px; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: 600 20px/1 var(--font-note);
+  letter-spacing: -0.015em;
+}
+
+
+.icon-button {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-button:hover { color: var(--text); }
+
+/* While a time is being picked the bar is taller: the toast floats above it. */
+body:has(.capture-field[data-step="time"]) .toast { margin-bottom: 48px; }
+
+/* Undo toast: a small pane of the same glass as the capture bar, floating
+   just above it. An icon says what happened, the text says it in words,
+   and Undo is a soft pill with its shortcut. A hairline along the bottom
+   drains as the time runs out and waits while the pointer is on it.
+   It is a popover so it can appear above an open panel. Never set `display`
+   on a popover outside :popover-open, or it will show while closed. */
+.toast {
+  position: fixed;
+  inset: auto auto calc(var(--keyboard) + var(--bar-height) + 40px + env(safe-area-inset-bottom)) 50%;
+  transform: translateX(-50%);
+  max-width: min(440px, calc(100vw - 32px));
+  margin: 0;
+  padding: 6px 6px 6px 8px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text);
+  font: 500 14px/1.2 var(--font-ui);
+  overflow: hidden;
+}
+.toast:popover-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.toast-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--text-muted);
+}
+.toast-icon[data-kind="done"] { background: color-mix(in srgb, #3E8E4F 16%, transparent); color: #2F7A40; }
+.toast-icon[data-kind="trash"] { background: color-mix(in srgb, #C2412C 12%, transparent); color: #B23B27; }
+.toast-icon[data-kind="calendar"], .toast-icon[data-kind="bell"] { background: color-mix(in srgb, #E2A400 18%, transparent); color: #8A6400; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .toast-icon[data-kind="done"] { color: #8FD39C; }
+  :root:not([data-theme="light"]) .toast-icon[data-kind="trash"] { color: #F08A76; }
+  :root:not([data-theme="light"]) .toast-icon[data-kind="calendar"],
+  :root:not([data-theme="light"]) .toast-icon[data-kind="bell"] { color: #F2D65C; }
+}
+:root[data-theme="dark"] .toast-icon[data-kind="done"] { color: #8FD39C; }
+:root[data-theme="dark"] .toast-icon[data-kind="trash"] { color: #F08A76; }
+:root[data-theme="dark"] .toast-icon[data-kind="calendar"],
+:root[data-theme="dark"] .toast-icon[data-kind="bell"] { color: #F2D65C; }
+.toast-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A message with nothing to undo is just the icon and the text. */
+.toast:has(.toast-action[hidden]) { padding-right: 18px; }
+.toast-action {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 32px;
+  padding: 0 8px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font: 600 13px/1 var(--font-ui);
+  cursor: pointer;
+  transition: transform 160ms var(--spring-pop, ease), background-color 140ms ease;
+}
+.toast-action:hover { transform: scale(1.04); }
+.toast-action:active { transform: scale(0.97); }
+.toast-action:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.toast-key {
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 16%, transparent);
+  font: 500 11px/1 var(--font-ui);
+  opacity: 0.85;
+}
+.toast-key[hidden] { display: none; }
+.toast:has(.toast-key[hidden]) .toast-action { padding-right: 14px; }
+/* the time left, draining along the bottom edge */
+.toast-timer {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+  transform-origin: left center;
+  animation: toast-drain 5200ms linear forwards;
+}
+.toast:hover .toast-timer,
+.toast:focus-within .toast-timer { animation-play-state: paused; }
+@keyframes toast-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* Later pile: three small notes stacked; only the count is shown. */
+.pile {
+  pointer-events: auto;
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: 0 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  /* the button itself is the bottom sheet */
+  background: color-mix(in srgb, var(--note) 82%, #000);
+  color: var(--note-text);
+  font: 600 14px/1 var(--font-ui);
+  transform: rotate(-5deg);
+  cursor: pointer;
+}
+
+/* middle and top sheets; the count is drawn above both */
+.pile::before,
+.pile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 6px;
+}
+.pile::before {
+  background: color-mix(in srgb, var(--note) 91%, #000);
+  transform: rotate(9deg);
+}
+.pile::after {
+  background: var(--note);
+  transform: rotate(4deg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.pile.is-bumped { animation: pile-bump 320ms ease; }
+
+@keyframes pile-bump {
+  40% { transform: rotate(-5deg) translateY(-6px); }
+}
+
+@media (min-width: 720px) {
+  /* On wide screens the pile rests in the bottom-right corner. */
+  .pile {
+    position: absolute;
+    right: 24px;
+    bottom: calc(23px + env(safe-area-inset-bottom));
+    margin: 0;
+  }
+}
+
+/* Panels: the two small popovers (settings, Later). */
+.panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--field-border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--panel-shadow);
+  font-size: 14px;
+  transition: opacity 140ms ease, translate 140ms ease;
+}
+
+@starting-style {
+  .panel:popover-open { opacity: 0; translate: 0 4px; }
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.panel-hint {
+  margin: 2px 0 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Settings */
+.settings {
+  top: calc(64px + env(safe-area-inset-top));
+  right: calc(12px + env(safe-area-inset-right));
+  width: 276px;
+}
+
+.setting {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.setting + .setting { margin-top: 16px; }
+.setting legend { padding: 0; margin-bottom: 8px; }
+
+.setting-name { display: grid; gap: 6px; }
+.setting-name label { font-size: 13px; color: var(--text-muted); }
+.name-input {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+.name-input::placeholder { color: var(--text-muted); }
+.name-input:focus { border-color: var(--text-muted); }
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.segmented label { position: relative; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 7px;
+  text-align: center;
+  font-size: 13px;
+  cursor: pointer;
+}
+.segmented input:checked + span { background: var(--text); color: var(--surface); font-weight: 600; }
+.segmented input:focus-visible + span { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.stepper button {
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+.stepper button:disabled { color: var(--text-muted); opacity: 0.45; cursor: default; }
+.stepper output {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Later panel: opens above the pile. */
+.later {
+  right: 16px;
+  bottom: calc(var(--keyboard) + var(--bar-height) + 36px + env(safe-area-inset-bottom));
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(60vh, 440px);
+  overflow-y: auto;
+}
+
+.later-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+/* Each waiting note is a slim strip of the same yellow paper. */
+.later-item {
+  display: flex;
+  align-items: stretch;
+  border-radius: 5px;
+  background: var(--paper, var(--note));
+  color: var(--note-text);
+}
+
+.later-promote,
+.later-remove {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.later-promote {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 6px 10px 12px;
+  text-align: left;
+}
+
+.later-text {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-note);
+  font-size: 15px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.later-promote svg { flex: none; opacity: 0.55; }
+.later-promote:hover svg { opacity: 1; }
+.later-promote:disabled { cursor: default; }
+.later-promote:disabled svg { visibility: hidden; }
+
+.later-remove {
+  flex: none;
+  width: 36px;
+  display: grid;
+  place-items: center;
+  opacity: 0.55;
+}
+.later-remove:hover { opacity: 1; }
+
+.later-item :focus-visible { outline-color: var(--note-text); outline-offset: -3px; }
+
+/* The good-morning card: the date, a greeting, and (when needed) one
+   question about yesterday. */
+.newday {
+  width: min(360px, calc(100vw - 40px));
+  padding: 30px 26px 22px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--panel-shadow);
+  text-align: center;
+}
+.newday[open] { animation: newday-in 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes newday-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+}
+.newday::backdrop {
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+          backdrop-filter: blur(6px);
+}
+.newday-date {
+  margin: 0;
+  color: var(--text-muted);
+  font: 500 12.5px/1 var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.newday-greeting {
+  margin: 10px 0 0;
+  font: 600 32px/1.1 var(--font-note);
+  letter-spacing: -0.02em;
+}
+.newday-yesterday {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.newday-yesterday[hidden] { display: none; }
+.newday-done {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.newday-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13.5px/1 var(--font-ui);
+  cursor: pointer;
+  transition: border-color 140ms ease;
+}
+.newday-end:hover { border-color: var(--text-muted); }
+.newday-text {
+  margin: 20px 0 0;
+  font-size: 15.5px;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.newday-text[hidden] { display: none; }
+.newday-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+.newday-actions[hidden] { display: none; }
+.newday-go { width: 100%; margin-top: 22px; }
+.newday-go[hidden] { display: none; }
+
+.button {
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.button-primary {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+/* Done today: the list behind the progress chip. */
+.done-panel {
+  top: calc(64px + env(safe-area-inset-top));
+  right: calc(52px + env(safe-area-inset-right));
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(60vh, 440px);
+  overflow-y: auto;
+}
+@media (max-width: 480px) {
+  .done-panel { right: 16px; }
+}
+
+.done-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.done-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+}
+
+.done-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-muted);
+  font-family: var(--font-note);
+  font-size: 15px;
+  line-height: 1.3;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.done-back {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.done-back:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+
+/* Focus view: one note, the whole screen. A quiet bar along the top (when
+   it's planned, where it is on the wall, full screen, close), the note large
+   in the middle with its timer, and what's up next along the bottom. */
+.focus {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  border: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+.focus[open] {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+/* the page's grain, here too */
+.focus::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain-image);
+  opacity: var(--grain);
+  pointer-events: none;
+}
+.focus::backdrop { background: var(--bg); }
+
+.focus-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 0 24px;
+}
+.focus-where {
+  margin: 0;
+  color: var(--text-muted);
+  font: 500 13px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.focus-position:not(:empty)::before { content: "·"; margin: 0 7px; }
+#focus-when:empty + .focus-position::before { content: none; }
+.focus-bar-tools { display: flex; gap: 2px; }
+.focus-bar-tools .icon-button[hidden] { display: none; }
+.focus .icon-exit { display: none; }
+.focus.is-fullscreen .icon-exit { display: block; }
+.focus.is-fullscreen .icon-enter { display: none; }
+
+.focus-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  min-height: 0;
+}
+.focus-center { display: grid; justify-items: center; min-height: 0; }
+.focus-turn {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease, transform 200ms var(--spring-pop, ease);
+}
+.focus-turn:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.focus-turn:active { transform: scale(0.92); }
+.focus-turn[hidden] { visibility: hidden; display: grid; }
+
+.focus-note {
+  --paper: var(--paper-yellow);
+  width: min(460px, 72vw, 50vh);
+  aspect-ratio: 1;
+  margin: 0;
+  padding: clamp(26px, 6vw, 48px);
+  border-radius: 16px;
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 32%,
+                            rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.1) 100%),
+    var(--paper);
+  box-shadow: inset 0 1px 0 var(--note-edge), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.12)) drop-shadow(0 22px 34px var(--note-ambient));
+  color: var(--note-text);
+  font: clamp(22px, 4.6vw, 34px)/1.3 var(--font-note);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  transform: rotate(-1deg);
+}
+
+/* Timer under the note: a big clock, a hairline of progress, a quiet label. */
+.timer {
+  width: min(300px, 70vw);
+  margin: 30px auto 0;
+  text-align: center;
+}
+.timer-clock {
+  margin: 0;
+  font: 300 clamp(46px, 8vh, 76px)/1 var(--font-ui);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.timer-track {
+  height: 3px;
+  margin: 14px 0 9px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  overflow: hidden;
+}
+.timer-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--text);
+  transition: width 250ms linear;
+}
+.timer-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+/* Running over: the clock turns a muted red. */
+.focus.is-over .timer-clock { color: #C2412C; }
+.focus.is-over .timer-fill { background: #C2412C; }
+
+.button-quiet { border-color: transparent; color: var(--text-muted); }
+.button-quiet:hover { color: var(--text); }
+
+.button-quiet { border-color: transparent; color: var(--text-muted); }
+.button-quiet:hover { color: var(--text); }
+
+.focus-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+.focus-actions .button { min-width: 120px; }
+
+.focus-foot {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 0 24px 22px;
+  text-align: center;
+}
+.focus-up-next {
+  margin: 0;
+  color: var(--text-muted);
+  font: 15px/1.4 var(--font-note);
+}
+.focus-up-next:empty { display: none; }
+.focus-keys {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  opacity: 0.75;
+}
+@media (hover: none), (max-width: 560px) { .focus-keys { display: none; } }
+@media (max-width: 560px) {
+  .focus-stage { grid-template-columns: 1fr; padding: 0 12px; }
+  .focus-turn { display: none; }
+}
+
+/* Opening: the page fades to paper and the note is pressed down onto it. */
+.focus[open] { animation: fade-in 260ms ease both; }
+.focus[open] .focus-note { animation: focus-note-in 620ms var(--spring-settle, cubic-bezier(0.2, 0.7, 0.2, 1)) both; }
+.focus[open] .timer, .focus[open] .focus-actions { animation: focus-rise 520ms var(--spring-glide, ease) 80ms both; }
+@keyframes focus-note-in {
+  from { opacity: 0; transform: translateY(-14px) rotate(-3deg) scale(1.05); }
+}
+@keyframes focus-rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+/* Trash: a small brushed-steel bin in the bottom-left corner. It stays tiny
+   until a note is dragged, then grows to catch it; it eats with one slam. */
+.trash {
+  --big: 1.4;    /* while a note is being dragged */
+  --bigger: 1.65; /* when something is right above it */
+  pointer-events: auto;
+  position: relative;
+  z-index: 4;
+  flex: none;
+  align-self: center;
+  width: 45px;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transform-origin: 25% 100%; /* it grows up and out of its corner */
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.trash svg { display: block; overflow: visible; }
+.trash-shadow { fill: rgba(0, 0, 0, 0.2); }
+.trash-can { transform-box: fill-box; transform-origin: 50% 100%; }
+.trash-lid {
+  transform-box: fill-box;
+  transform-origin: 8% 100%; /* hinged at the back-left */
+  transition: transform 260ms cubic-bezier(0.34, 1.7, 0.64, 1);
+}
+
+@media (hover: hover) {
+  .trash:hover { transform: scale(1.3); }
+  .trash:hover .trash-lid { transform: rotate(-12deg) translateY(-0.5px); }
+}
+.trash:focus-visible { outline-offset: 3px; border-radius: 6px; }
+
+/* A note is being dragged: the bin grows and lifts its lid a little. */
+.trash.is-awake { transform: scale(var(--big)); }
+.trash.is-awake .trash-lid { transform: rotate(-14deg) translateY(-0.5px); }
+
+/* Something is right above it: bigger still, lid wide open. */
+.trash.is-open { transform: scale(var(--bigger)); }
+/* Something is coming: the lid swings right back and stands upright behind
+   the left rim, like a pedal can's, so the opening is clear from above. */
+.trash.is-open .trash-lid { transform: rotate(-104deg) translate(-1px, -2px); }
+
+/* Eating: the lid slams shut once, hard. The can squashes under it and
+   bounces back, the lid rattles, then the bin shrinks back to its corner. */
+.trash.is-chomping { transform: scale(var(--bigger)); }
+.trash.is-chomping .trash-lid { animation: lid-slam 780ms linear both; }
+.trash.is-chomping .trash-can { animation: bin-slam 780ms linear both; }
+/* The ball has landed: a beat, then the upright lid tips over and falls
+   shut, faster and faster, and rattles to rest. */
+@keyframes lid-slam {
+  0%, 10% { transform: rotate(-104deg) translate(-1px, -2px); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.55); }
+  36%  { transform: rotate(3deg); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
+  46%  { transform: rotate(-9deg) translateY(-0.6px); animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.6); }
+  56%  { transform: rotate(1.5deg); animation-timing-function: ease-out; }
+  68%  { transform: rotate(-2.5deg); }
+  80%  { transform: rotate(0.6deg); }
+  100% { transform: none; }
+}
+/* A small thud as the ball hits the bottom, then the big one when the lid lands. */
+@keyframes bin-slam {
+  0%   { transform: none; }
+  5%   { transform: scale(1.03, 0.96); }
+  12%, 34% { transform: none; }
+  38%  { transform: scale(1.11, 0.84); }
+  48%  { transform: scale(0.95, 1.06); }
+  60%  { transform: scale(1.03, 0.97); }
+  74%  { transform: scale(0.99, 1.01); }
+  100% { transform: none; }
+}
+
+/* Looking inside (bin-peek open): a little bigger, lid propped right open. */
+.trash.is-looking { transform: scale(1.3); }
+.trash.is-looking .trash-lid { transform: rotate(-48deg) translate(-1.5px, -2.5px); }
+
+@media (min-width: 720px) {
+  .trash {
+    position: absolute;
+    left: 26px;
+    bottom: calc(28px + env(safe-area-inset-bottom));
+  }
+}
+
+/* A dragged note shrinks as it reaches the bin. */
+.note.is-over-trash { opacity: 0.92; transition: opacity 120ms ease; }
+
+/* The throw-away side along the left edge: hidden until a note is picked
+   up. Then the left of the page frosts over, like glass sliding in from the
+   edge, blurring the wall behind it and fading out towards the middle. Over
+   it, the frost thickens and the label comes forward (see drag.js). */
+.drop-zone {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 8990; /* over the notes on the wall, under the one being carried */
+  width: calc(var(--zone, 190px) * 1.35);
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  padding-left: calc(var(--zone, 190px) * 0.28);
+  background: color-mix(in srgb, var(--bg) 38%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+          backdrop-filter: blur(10px) saturate(120%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 62%, transparent 100%);
+          mask-image: linear-gradient(90deg, #000 0%, #000 62%, transparent 100%);
+  opacity: 0;
+  translate: -40px 0;
+  transition:
+    opacity 260ms ease,
+    translate 420ms var(--spring-glide, cubic-bezier(0.2, 0.7, 0.2, 1)),
+    background-color 240ms ease,
+    -webkit-backdrop-filter 240ms ease,
+    backdrop-filter 240ms ease;
+  pointer-events: none;
+}
+.drop-zone-label {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  color: var(--text-muted);
+  font: 500 12px/1 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 220ms ease, transform 320ms var(--spring-pop, ease);
+}
+.drop-zone-label span { writing-mode: vertical-rl; transform: rotate(180deg); }
+.drop-zone-label svg { opacity: 0.8; }
+.drop-zone.is-awake { opacity: 1; translate: 0 0; }
+/* While carrying, the trash can and the bar stay clear of the frost. */
+body.is-carrying .capture { z-index: 8995; }
+.drop-zone.is-hot {
+  background-color: color-mix(in srgb, var(--bg) 20%, color-mix(in srgb, #C2412C 7%, transparent));
+  -webkit-backdrop-filter: blur(18px) saturate(110%);
+          backdrop-filter: blur(18px) saturate(110%);
+}
+.drop-zone.is-hot .drop-zone-label { color: var(--text); transform: scale(1.08); }
+
+/* Inside the bin: a pane of the same glass as the menu and the capture bar,
+   rising out of the bin. The balls rest on the floor of a shallow well, the
+   inside of the bin (binpeek.js). */
+.bin-peek {
+  position: fixed;
+  inset: auto auto 0 0;
+  margin: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 14px 14px 10px;
+  border: 0;
+  border-radius: 20px;
+  color: var(--text);
+  overflow: visible;
+  transform-origin: 30px 100%;
+  transition: opacity 140ms ease, background-color 220ms ease, box-shadow 220ms ease, backdrop-filter 220ms ease;
+}
+.bin-peek:popover-open { animation: peek-in 300ms cubic-bezier(0.34, 1.4, 0.64, 1); }
+@keyframes peek-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.9); }
+}
+.bin-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+.bin-title { margin: 0; font: 600 17px/1.2 var(--font-note); letter-spacing: -0.01em; }
+.bin-sub { margin: 2px 0 0; color: var(--text-muted); font-size: 12px; }
+.bin-count { color: var(--text-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+.bin-well {
+  display: flex;
+  align-items: flex-end;
+  min-height: 92px;
+  margin: 10px 0 8px;
+  padding: 14px 10px 10px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 7%, transparent), color-mix(in srgb, var(--text) 3%, transparent));
+  box-shadow:
+    inset 0 2px 7px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px color-mix(in srgb, var(--text) 6%, transparent);
+}
+.bin-balls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 6px;
+  width: 100%;
+}
+.bin-balls:empty { display: none; }
+.bin-empty {
+  width: 100%;
+  margin: 0;
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  text-align: center;
+}
+.bin-empty[hidden] { display: none; }
+
+.bin-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  padding: 0 2px 0 4px;
+}
+.bin-hint { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.3; }
+.bin-hint[hidden] { display: none; }
+.bin-clear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font: 500 13px/1 var(--font-ui);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.bin-clear:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.bin-clear[hidden] { display: none; }
+
+/* While emptying, the balls fall out of the well: the glass fades away
+   from under them. */
+.bin-peek.is-emptying {
+  background-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+}
+.bin-peek.is-emptying::before { opacity: 0; }
+.bin-peek.is-emptying .bin-head,
+.bin-peek.is-emptying .bin-foot { opacity: 0; transition: opacity 180ms ease; }
+.bin-peek.is-emptying .bin-well { background: none; box-shadow: none; transition: background 220ms ease, box-shadow 220ms ease; }
+
+/* One deleted note, balled up: its paper color, a lumpy outline and faceted
+   creases, all drawn per ball by paper.js. */
+.bin-ball {
+  --paper: var(--paper-yellow);
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+  filter: drop-shadow(0 2px 1.5px rgba(0, 0, 0, 0.25)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.12));
+  translate: 0 var(--sink, 0px);
+  transition: translate 200ms cubic-bezier(0.34, 1.56, 0.64, 1), scale 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.bin-ball[data-color="pink"]  { --paper: var(--paper-pink); }
+.bin-ball[data-color="blue"]  { --paper: var(--paper-blue); }
+.bin-ball[data-color="green"] { --paper: var(--paper-green); }
+.bin-ball:hover,
+.bin-ball.is-peeking { translate: 0 calc(var(--sink, 0px) - 4px); scale: 1.08; }
+.bin-ball:focus-visible { outline-offset: 2px; border-radius: 50%; }
+.bin-ball.is-lifted { opacity: 0.25; }
+.bin-ball-paper {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--paper);
+  background-size: 100% 100%;
+}
+/* The ball being pulled out follows the pointer; outside the tray it grows,
+   ready to unfold. */
+.bin-ball.is-ghost {
+  position: fixed;
+  z-index: 70;
+  margin: -25px 0 0 -25px;
+  pointer-events: none;
+  translate: none;
+  rotate: 0deg;
+  scale: 1.1;
+  transition: scale 160ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.bin-ball.is-ghost.is-out { scale: 1.5; }
+/* A ball on its way into the bin when emptying (binpeek.js). */
+.bin-ball.is-flying {
+  position: fixed;
+  z-index: 70;
+  margin: -25px 0 0 -25px;
+  pointer-events: none;
+  translate: none;
+  rotate: none;
+  scale: none;
+  transition: none;
+}
+
+/* Hovering a ball opens it up in the air, just above, to show what it was:
+   a small flat note, still creased. It folds back up when the pointer leaves. */
+.ball-preview {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow: visible;
+  pointer-events: none;
+}
+.ball-preview-paper {
+  --paper: var(--paper-yellow);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 168px;
+  height: 168px;
+  padding: 16px 16px 14px;
+  border-radius: 10px;
+  background: linear-gradient(170deg, rgba(255, 255, 255, 0.22), rgba(0, 0, 0, 0.04)), var(--paper);
+  color: var(--note-text);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.14)) drop-shadow(0 12px 16px rgba(0, 0, 0, 0.18));
+  overflow: hidden;
+}
+.ball-preview-paper[data-color="pink"]  { --paper: var(--paper-pink); }
+.ball-preview-paper[data-color="blue"]  { --paper: var(--paper-blue); }
+.ball-preview-paper[data-color="green"] { --paper: var(--paper-green); }
+.ball-preview-time {
+  font: 600 11.5px/1 var(--font-ui);
+  letter-spacing: 0.02em;
+  opacity: 0.6;
+}
+.ball-preview-time:empty { display: none; }
+.ball-preview-text {
+  margin: 0;
+  font: 17px/1.3 var(--font-note);
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.ball-preview-creases {
+  position: absolute;
+  inset: 0;
+  background-size: 100% 100%;
+  mix-blend-mode: hard-light;
+  pointer-events: none;
+}
+
+/* "What now?": the chosen note stays above the others for a moment. */
+.note.is-picked { z-index: 9000 !important; }
+.note.is-picked::before { box-shadow: 0 22px 20px -6px var(--note-shadow); }
+
+/* The thrown copy of a note (see trash.js). */
+.throw {
+  position: fixed;
+  z-index: 60;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.throw-paper {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.25));
+}
+.throw-paper .note-foot { opacity: 0; }
+/* Folds and creases of the crumpled paper: lit and shaded facets, drawn
+   per sheet by paper.js and laid over the paper's colour. */
+.throw-creases {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  background-size: 100% 100%;
+  mix-blend-mode: hard-light;
+}
+
+/* Right-click menu: a small pane of the same glass as the capture bar. */
+.menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 232px;
+  padding: 6px;
+  border: 0;
+  border-radius: 14px;
+  color: var(--text);
+  font-size: 14px;
+  transition: opacity 120ms ease, scale 140ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@starting-style {
+  .menu:popover-open { opacity: 0; scale: 0.94; }
+}
+
+.menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible { background: color-mix(in srgb, var(--text) 9%, transparent); outline: none; }
+.menu-item:disabled { opacity: 0.4; cursor: default; }
+.menu-icon { flex: none; opacity: 0.75; }
+.menu-label { flex: 1; }
+.menu-key {
+  color: var(--text-muted);
+  font: 500 12px/1 var(--font-ui);
+  letter-spacing: 0.02em;
+}
+.menu-item.is-danger { color: #B33A28; }
+.menu-item.is-danger:hover,
+.menu-item.is-danger:focus-visible { background: color-mix(in srgb, #C2412C 13%, transparent); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .menu-item.is-danger { color: #F08A76; }
+}
+:root[data-theme="dark"] .menu-item.is-danger { color: #F08A76; }
+
+.menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  border: 0;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+/* Rows that change the note in place (the menu stays open). */
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 6px 0 10px;
+}
+.menu-row-label { flex: 1; color: var(--text-muted); font-size: 13px; }
+
+.menu-swatch {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+}
+.menu-swatch[data-color="yellow"] { --swatch: var(--paper-yellow); }
+.menu-swatch[data-color="pink"]   { --swatch: var(--paper-pink); }
+.menu-swatch[data-color="blue"]   { --swatch: var(--paper-blue); }
+.menu-swatch[data-color="green"]  { --swatch: var(--paper-green); }
+.menu-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
+.menu-swatch:focus-visible { outline-offset: 3px; }
+
+.menu-step {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+  font: 400 16px/1 var(--font-ui);
+  cursor: pointer;
+}
+.menu-step:hover { background: color-mix(in srgb, var(--text) 15%, transparent); }
+.menu-time {
+  min-width: 70px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 6. Motion preferences --------------------------------------------------- */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+  /* The toast's time line is a clock, not motion: it keeps its real length. */
+  .toast-timer { animation-duration: 5200ms !important; }
+  /* Looping animations would flicker at 1ms; switch them off entirely. */
+  .mic.is-listening { animation: none; }
+}
+
+/* Piles ------------------------------------------------------------------- */
+/* Notes dropped onto each other stack into a neat pile (ui.js, 6. Piles):
+   the top note on its own angle, the ones under it peeking out below and to
+   the right, each tilted a little differently, and a count on the corner. */
+
+/* A closed pile is one thing: click it to open, drag it to move it.
+   Its inner buttons wait until it is spread out. */
+.note.in-pile:not(.is-spread) .note-paper button,
+.note.in-pile:not(.is-spread) > button { pointer-events: none; }
+.note.in-pile:not(.is-pile-top):not(.is-spread) .note-paper > * { visibility: hidden; }
+.note.is-pile-top { cursor: pointer; }
+.note.is-pile-top:active { cursor: grabbing; }
+
+/* the count: a small dark disc on the top-right corner */
+.pile-count {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font: 600 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 2px var(--bg);
+  pointer-events: none;
+  animation: pile-count-in 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.pile-count[hidden] { display: none; }
+@keyframes pile-count-in {
+  from { transform: scale(0.4); opacity: 0; }
+}
+
+/* Carried along with the note in the hand (the rest of a pile). */
+.note.is-carried { pointer-events: none; }
+
+/* The note about to take another on top: it rises a little to meet it. */
+.note.is-stack-target {
+  transform: rotate(var(--rot, 0deg)) translateY(-3px) scale(1.035);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)) drop-shadow(0 12px 18px var(--note-ambient));
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 180ms ease;
+}
+.note.is-stack-target .note-paper {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 22%, transparent);
+  border-radius: var(--radius);
+}
+
+/* An open pile: the wall dims behind its notes, and a glass bar says what this is. */
+.pile-spread {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  -webkit-backdrop-filter: blur(6px) saturate(90%);
+          backdrop-filter: blur(6px) saturate(90%);
+  animation: fade-in 220ms ease both;
+}
+.pile-spread[hidden] { display: none; }
+.pile-spread.is-closing { animation: fade-out 220ms ease both; pointer-events: none; }
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+
+.pile-bar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 64px);
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+  padding: 6px 6px 6px 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+  animation: pile-bar-in 280ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+@keyframes pile-bar-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+}
+.pile-bar-count { font: 600 14px/1 var(--font-ui); color: var(--text); }
+.pile-bar-hint {
+  margin: 0 6px 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  font: 500 13px/1 var(--font-ui);
+}
+.pile-bar-button {
+  flex: none;
+  height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: 500 13px/1 var(--font-ui);
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.pile-bar-button:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.pile-bar-button.is-primary { background: var(--text); color: var(--bg); font-weight: 600; }
+.pile-bar-button.is-primary:hover { background: color-mix(in srgb, var(--text) 86%, var(--bg)); }
+@media (max-width: 560px) {
+  .pile-bar-hint { display: none; }
+}
+
+/* Wall / Today / Tomorrow switch ------------------------------------------- */
+/* A small glass pill in the middle of the top bar. A thumb slides (on a
+   spring) behind the view that's showing. */
+.view-switch {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 12px);
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 3px;
+  border-radius: 999px;
+  --at: 0;
+}
+.view-switch button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font: 500 13px/1 var(--font-ui);
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+.view-switch button:hover { color: var(--text); }
+.view-switch button[aria-pressed="true"] { color: var(--bg); }
+.view-switch button:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+.view-switch-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 3);
+  border-radius: 999px;
+  background: var(--text);
+  transform: translateX(calc(var(--at) * 100%));
+  transition: transform 520ms var(--spring-glide, cubic-bezier(0.2, 0.7, 0.2, 1));
+}
+@media (max-width: 520px) {
+  .view-switch button { padding: 0 12px; }
+  .view-switch button span { display: none; }
+}
+
+/* What now? --------------------------------------------------------------- */
+/* A small glass card under the chip: one note, and why it's the one. */
+.whatnow-card {
+  position: fixed;
+  inset: calc(env(safe-area-inset-top) + 58px) calc(12px + env(safe-area-inset-right)) auto auto;
+  width: min(320px, calc(100vw - 24px));
+  margin: 0;
+  padding: 16px 16px 14px;
+  border: 0;
+  border-radius: 18px;
+  color: var(--text);
+  overflow: hidden;
+  transition: opacity 160ms ease, translate 360ms var(--spring-pop, ease), scale 360ms var(--spring-pop, ease);
+  transform-origin: top right;
+}
+@starting-style {
+  .whatnow-card:popover-open { opacity: 0; translate: 0 -8px; scale: 0.96; }
+}
+.whatnow-title {
+  margin: 0;
+  color: var(--text-muted);
+  font: 600 11.5px/1 var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.whatnow-text {
+  margin: 10px 0 0;
+  font: 21px/1.3 var(--font-note);
+  letter-spacing: -0.01em;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.whatnow-why {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font: 500 13px/1.35 var(--font-ui);
+}
+.whatnow-why::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--note);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--note) 30%, transparent);
+}
+.whatnow-actions { display: flex; gap: 8px; margin-top: 14px; }
+.whatnow-actions .button { flex: 1; }
+.whatnow-actions .button[hidden] { display: none; }
+
+@media (max-width: 520px) {
+  .chip-quiet span { display: none; }
+  .chip-quiet { padding: 0 9px; }
+}
+
+/* Settings, grouped ------------------------------------------------------- */
+.settings {
+  width: 300px;
+  max-height: calc(100dvh - 80px - env(safe-area-inset-top));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.settings-group {
+  margin: 22px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.settings-group + .setting { margin-top: 0; }
+.setting-row + .setting-row { margin-top: 10px; }
+.stepper output.stepper-wide { min-width: 62px; font-size: 13px; }
+.settings-data { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.settings-link {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 500 13.5px/1.3 var(--font-ui);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text) 30%, transparent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.settings-link:hover { text-decoration-color: var(--text); }
+
+
+/* Fixes ------------------------------------------------------------------- */
+/* Scrolled on Today or Tomorrow: the top bar frosts over, so the list
+   slides under glass instead of colliding with the name and the buttons. */
+.topbar { transition: background-color 200ms ease, box-shadow 200ms ease, -webkit-backdrop-filter 200ms ease, backdrop-filter 200ms ease; }
+body[data-view].is-scrolled .topbar {
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+          backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 1px 0 var(--border);
+}
+
+/* A planned time on a wall note stays on one line. */
+.note-time span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-time { max-width: 100%; }
+
+/* Phones: the switch takes its own place in the top bar (no overlap with
+   What now?), and the name shrinks to just the logo. */
+@media (max-width: 520px) {
+  .brand span { display: none; }
+  .view-switch { position: static; transform: none; margin: 0 auto 0 8px; }
+  .topbar { padding-left: calc(16px + env(safe-area-inset-left)); }
+}
+
+/* The empty capture bar's placeholder never wraps onto a second line. */
+.capture-input:placeholder-shown { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+
+/* Balls on their way into the trash fly in this layer: the can's body is cut
+   out of it, so below the rim a ball is behind the can's front wall (trash.js). */
+.throw-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+/* Today and Tomorrow ------------------------------------------------------ */
+/* The same sticky notes as the wall (days.js): same paper, colors, tilt,
+   curled corner and handwriting type, just set out neatly in rows instead
+   of anywhere. The wall steps away while either is showing; the capture
+   bar stays. */
+body[data-view="today"] .wall-area > :not(#today-view),
+body[data-view="tomorrow"] .wall-area > :not(#tomorrow-view) { display: none !important; }
+
+.day-view {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 66px) 24px calc(var(--bar-height) + 130px + env(safe-area-inset-bottom));
+}
+.day-view[hidden] { display: none; }
+/* the heading reads like the wall's greeting: big, centered, the date under it */
+.day-head { margin-bottom: 30px; text-align: center; }
+.day-title {
+  margin: 0;
+  padding: 0.06em 0 0.12em;
+  font: 600 38px/1.25 var(--font-note);
+  letter-spacing: -0.025em;
+}
+.day-sub { margin: 0; color: var(--text-muted); font: 500 14px/1.4 var(--font-ui); }
+.day-summary:not(:empty)::before { content: "·"; margin: 0 6px 0 2px; }
+.day-hint { margin: 8px 0 0; color: var(--text-muted); font: 15px/1.4 var(--font-note); }
+.day-progress {
+  width: min(260px, 60%);
+  height: 3px;
+  margin: 14px auto 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  overflow: hidden;
+}
+.day-progress[hidden] { display: none; }
+.day-progress span {
+  display: block;
+  height: 100%;
+  width: calc(var(--done, 0) * 100%);
+  border-radius: 3px;
+  background: var(--text);
+  transition: width 600ms var(--spring-glide, ease);
+}
+
+.day-block { margin-top: 40px; }
+.day-block[hidden] { display: none; }
+.day-block-title {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+  font: 600 11.5px/1 var(--font-ui);
+  letter-spacing: 0.07em;
+  text-align: center;
+  text-transform: uppercase;
+}
+/* the board: rows of sticky notes, centered */
+.day-list {
+  --size: 180px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, var(--size)); /* auto-fit: a short row still sits in the middle */
+  justify-content: center;
+  gap: 30px 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.day-list.is-quiet { --size: 150px; }
+.day-list.is-done { --size: 128px; gap: 22px 20px; }
+.day-empty { margin: 30px 0 0; color: var(--text-muted); font: 17px/1.5 var(--font-ui); text-align: center; }
+.day-empty[hidden] { display: none; }
+
+/* One sticky: the li tilts and carries the shadow, the sheet is the paper. */
+.day-row {
+  --paper: var(--paper-yellow);
+  --radius: 10px;
+  --fold: 22px;
+  position: relative;
+  width: var(--size);
+  aspect-ratio: 1;
+  rotate: var(--rot, 0deg);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)) drop-shadow(0 7px 12px var(--note-ambient));
+  cursor: pointer;
+  outline: none;
+  transition: translate 260ms var(--spring-pop, ease), filter 200ms ease, rotate 300ms var(--spring-pop, ease);
+}
+.day-row[data-color="pink"] { --paper: var(--paper-pink); }
+.day-row[data-color="blue"] { --paper: var(--paper-blue); }
+.day-row[data-color="green"] { --paper: var(--paper-green); }
+.day-row:hover { translate: 0 -3px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)) drop-shadow(0 14px 16px var(--note-ambient)); }
+.day-row:focus-visible .day-sheet { outline: 2px solid var(--text); outline-offset: 3px; }
+.day-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 18px 16px 10px;
+  border-radius: var(--radius);
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 32%,
+                            rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.1) 100%),
+    var(--paper);
+  box-shadow: inset 0 1px 0 var(--note-edge), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  color: var(--note-text);
+  overflow: hidden;
+  /* the bottom-right corner curls up, like on the wall */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--fold)), calc(100% - var(--fold)) 100%, 0 100%);
+}
+.day-sheet::after {
+  /* the curl itself */
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--fold);
+  height: var(--fold);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--paper) 70%, #fff) 45%, color-mix(in srgb, var(--paper) 75%, #000) 100%);
+  border-top-left-radius: 6px;
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.12);
+}
+.day-time {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -4px 0 6px;
+  color: rgba(26, 26, 26, 0.62);
+  font: 600 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.day-time[hidden] { display: none; }
+.day-text {
+  flex: 1;
+  min-height: 0;
+  font: 19px/1.3 var(--font-note);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  outline: none;
+}
+.day-row.is-pinned .day-sheet::before {
+  /* a small red pin head where a pinned note is stuck */
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: calc(50% - 6px);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #FF9E8A, #DC4A32 45%, #8E2416);
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.25);
+}
+.day-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 30px;
+  margin-right: 14px; /* clear of the curl */
+}
+
+/* the check: an empty ring on the paper that fills when ticked off */
+.day-check {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid rgba(26, 26, 26, 0.35);
+  border-radius: 50%;
+  background: none;
+  color: transparent;
+  cursor: pointer;
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, transform 260ms var(--spring-pop, ease);
+}
+.day-check:hover { border-color: var(--note-text); color: rgba(26, 26, 26, 0.4); }
+.day-row.is-ticking .day-check,
+.day-list.is-done .day-check { background: var(--note-text); border-color: var(--note-text); color: var(--paper); }
+.day-row.is-ticking .day-check { transform: scale(1.15); }
+.day-row.is-ticking .day-text,
+.day-list.is-done .day-text { text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.6; }
+.day-row.is-ticking { translate: 0 -6px; rotate: calc(var(--rot, 0deg) + 2deg); }
+
+/* Later: the same stickies, a little smaller and quieter. Done: smaller still, faded. */
+.day-list.is-quiet .day-row { opacity: 0.78; }
+.day-list.is-quiet .day-text { font-size: 17px; }
+.day-list.is-done .day-row { opacity: 0.55; cursor: default; }
+.day-list.is-done .day-row:hover { translate: none; }
+.day-list.is-done .day-sheet { padding: 12px 12px 8px; }
+.day-list.is-done .day-text { font-size: 15px; }
+.day-list.is-done .day-check { width: 22px; height: 22px; }
+
+/* Focus, tomorrow, delete: on the paper, shown when you reach for the note. */
+.day-actions { display: flex; gap: 0; margin-left: auto; opacity: 0; transition: opacity 140ms ease; }
+.day-row:hover .day-actions, .day-row:focus-visible .day-actions, .day-row:focus-within .day-actions { opacity: 1; }
+@media (hover: none) { .day-actions { opacity: 0.85; } }
+.day-act {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: rgba(26, 26, 26, 0.6);
+  cursor: pointer;
+}
+.day-act:hover { background: rgba(0, 0, 0, 0.08); color: var(--note-text); }
+.day-act[data-act="delete"]:hover { color: #B23B27; }
+.day-row.is-editing { cursor: text; }
+.day-row.is-editing .day-sheet { outline: 2px solid var(--text); outline-offset: 3px; }
+.day-row.is-editing .day-actions { display: none; }
+.day-row.is-leaving { pointer-events: none; }
+.day-row[data-kind="tomorrow"] { cursor: default; }
+
+@media (max-width: 560px) {
+  .day-view { padding-left: 14px; padding-right: 14px; }
+  .day-title { font-size: 30px; }
+  .day-list { --size: calc((100vw - 28px - 18px) / 2); gap: 22px 18px; }
+  .day-list.is-quiet { --size: calc((100vw - 28px - 18px) / 2.2); }
+  .day-list.is-done { --size: calc((100vw - 28px - 36px) / 3); gap: 16px 18px; }
+  .day-text { font-size: 17px; }
+}
+/* a three-way switch is wider: on narrow phones only the icons show */
+@media (max-width: 520px) {
+  .view-switch button { padding: 0 11px; }
+}
+.newday-arrived { margin: 10px 0 0; color: var(--text); font: 15px/1.4 var(--font-note); }
+.newday-arrived[hidden] { display: none; }
+
+/* Phones have no N key to press: the hint makes room for the placeholder. */
+@media (max-width: 520px), (hover: none) {
+  .capture-key { display: none !important; }
+}
