@@ -7,7 +7,7 @@
 // counts as the trash (see drag.js).
 
 import { rotOf } from './motion.js';
-import { crumple, slam, binOpen } from './sound.js';
+import { crumple, slam, binOpen, thud } from './sound.js';
 import { crumpleShapes, creaseImage } from './paper.js';
 import { dropZoneWidth } from './drag.js';
 
@@ -24,11 +24,71 @@ export function trashElement() {
   return bin;
 }
 
-/** Lid open (something is coming) or closed. */
+/** Lid open (something is coming) or closed. Stays open while balls are on their way. */
 export function setTrashOpen(open) {
+  if (!open && incoming > 0) return;
   if (open && !bin.classList.contains('is-open')) binOpen();
   bin.classList.toggle('is-open', open);
   zone.classList.toggle('is-hot', open && zone.classList.contains('is-awake'));
+}
+
+// ---------- Several at once ----------
+// Every ball on its way is counted. The lid opens for the first one and stays
+// open, upright, until the last one is in; each landing in between only
+// thuds the can. A moment after the last one, the lid comes down once.
+
+let incoming = 0;
+let closeTimer = 0;
+let slots = 0; // balls thrown in this round, so they heap up a little
+
+/** A ball is on its way: open up (or stay open). Returns its place in the round. */
+export function expectBall() {
+  clearTimeout(closeTimer);
+  incoming += 1;
+  // the lid was coming down: catch it and swing it back up
+  if (bin.classList.contains('is-chomping')) {
+    bin.classList.remove('is-chomping');
+    bin.querySelector('.trash-lid').getAnimations().forEach((a) => a.cancel());
+  }
+  setTrashOpen(true);
+  return incoming - 1;
+}
+
+/** Where the next ball comes to rest: a little higher as they heap up, a little to one side. */
+export function restingSpot(can, size) {
+  const k = slots++;
+  return {
+    x: can.mouth.x + [0, -5, 5, -2, 3][k % 5],
+    floor: can.floor - size / 2 - Math.min(10, k * 2.5),
+  };
+}
+
+/** A ball hit the bottom. The last one in brings the lid down. */
+export function ballLanded() {
+  incoming = Math.max(0, incoming - 1);
+  if (incoming > 0) {
+    thump();
+    return;
+  }
+  thud();
+  thump();
+  // a short beat, in case another is already being crumpled
+  closeTimer = setTimeout(() => {
+    if (incoming > 0) return;
+    slots = 0;
+    eat(false);
+  }, ms(170));
+}
+
+/** The can takes a small knock (a ball landed, the lid is still open). */
+function thump() {
+  if (reducedMotion.matches) return;
+  bin.querySelector('.trash-can').animate([
+    { transform: 'none' },
+    { transform: 'scale(1.04, 0.95)', offset: 0.3 },
+    { transform: 'scale(0.99, 1.02)', offset: 0.65 },
+    { transform: 'none' },
+  ], { duration: 260, easing: 'ease-out' });
 }
 
 /** While any note is being dragged, the trash can stirs so it can be found. */
@@ -58,7 +118,7 @@ export async function throwAway(el) {
   //    The creases deepen with each squeeze. The can opens, ready to catch it.
   const duration = ms(560);
   crumple(duration / 1000);
-  setTrashOpen(true);
+  expectBall();
   const ball = BALL_SIZE / width;
   const s = (k) => scale + (ball - scale) * k;
   const crumpling = paper.animate([
@@ -87,8 +147,9 @@ export async function throwAway(el) {
   //    That landing is what thumps the can and brings the lid down.
   const can = inside();
   const fit = Math.min(1, can.fit / BALL_SIZE); // squeezes through the opening
-  const path = throwPath(start, can.mouth);
-  const land = path.landAt(can.floor - (BALL_SIZE * fit) / 2);
+  const spot = restingSpot(can, BALL_SIZE * fit);
+  const path = throwPath(start, { x: spot.x, y: can.mouth.y });
+  const land = path.landAt(spot.floor);
   const time = ms(path.duration * land);
   can.layer.append(flight);
   paper.animate(
@@ -96,8 +157,9 @@ export async function throwAway(el) {
     { duration: time, easing: 'linear', fill: 'forwards' },
   );
   await flight.animate(flightFrames(path, start, land), { duration: time, easing: 'linear', fill: 'forwards' }).finished;
-  eat(); // it hit the bottom: thump, and the lid comes down
-  setTimeout(() => can.layer.remove(), ms(700));
+  ballLanded(); // it hit the bottom: thump; the last one in brings the lid down
+  // the ball stays in sight above the rim until the lid has covered it
+  setTimeout(() => can.layer.remove(), ms(1100));
 }
 
 /**
@@ -124,8 +186,8 @@ export function flightFrames(path, start, end = 1, extra = () => '') {
  * floor is, and how wide a ball can be to fit through.
  * The caller puts the flying balls in `layer` and removes it afterwards.
  */
-export function inside() {
-  const body = bin.querySelector('.trash-can').getBoundingClientRect();
+export function inside(shape = bin.querySelector('.trash-can'), aim = 0.58) {
+  const body = shape.getBoundingClientRect();
   const rim = body.top + 1;
   const left = body.left + 2;
   const right = body.right - 2;
@@ -136,15 +198,15 @@ export function inside() {
   document.body.append(layer);
   return {
     layer,
-    mouth: { x: body.left + body.width * 0.58, y: rim }, // right of the upright lid
+    mouth: { x: body.left + body.width * aim, y: rim }, // (the bin's: right of the upright lid)
     floor: body.bottom - 3,
     fit: (right - left) * 0.8,
   };
 }
 
 /** One slam of the lid, then the trash can shrinks back to its corner. */
-export function eat() {
-  slam();
+export function eat(withThump = true) {
+  slam(withThump);
   bin.classList.add('is-chomping');
   bin.classList.remove('is-open');
   const lid = bin.querySelector('.trash-lid');
@@ -174,7 +236,7 @@ export async function tossTo(el, targetEl) {
  * Hide the real note and put a free-flying copy of its paper exactly where it is.
  * Returns the copy and where it started.
  */
-function lift(el) {
+export function lift(el) {
   const box = el.getBoundingClientRect();
   const width = el.offsetWidth;
   const height = el.offsetHeight;

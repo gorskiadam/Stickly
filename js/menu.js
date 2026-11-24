@@ -5,20 +5,24 @@
 // In text (the capture bar, a note being edited) the browser's own menu stays,
 // so copy and paste keep working. The ContextMenu key and Shift+F10 open it
 // for the focused note; arrow keys move through it; Esc closes it.
+// On a phone, a tap on a note opens the same actions as a sheet from the
+// bottom of the screen (big rows, the note's text on top, swipe down to close).
 
 import { getState, setColor, setTheme, canUndo, canRedo, doneItems, COLORS } from './store.js';
-import { noteActions, tidyWall } from './ui.js';
+import { noteActions, tidyWall, isInOpenPile } from './ui.js';
 import { askWhatNow } from './whatnow.js';
 import { endTheDay } from './sweep.js';
 import { cycleView } from './days.js';
 import { stepBack, stepForward } from './feedback.js';
 import { t, formatMinutes } from './strings.js';
+import { swipeToClose, onTopOf } from './sheet.js';
 
 const menu = document.getElementById('menu');
 const captureInput = document.getElementById('capture-input');
 const settingsPanel = document.getElementById('settings');
 const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+const phone = window.matchMedia('(max-width: 600px), (hover: none) and (pointer: coarse)');
 const MOD = isMac ? '⌘' : 'Ctrl+';
 
 /** Small line icons for the menu, 16×16. */
@@ -37,6 +41,8 @@ const ICONS = {
   spark: '<path d="M8 1.8v2.4M8 11.8v2.4M1.8 8h2.4M11.8 8h2.4M3.6 3.6l1.6 1.6M10.8 10.8l1.6 1.6M12.4 3.6l-1.6 1.6M5.2 10.8l-1.6 1.6"/>',
   moon: '<path d="M12.5 10A5 5 0 0 1 6 3.5a5 5 0 1 0 6.5 6.5z"/>',
   tomorrow: '<path d="M2.5 11.5h11M4.5 11.5a3.5 3.5 0 0 1 7 0M8 3.5v2M3.6 6.2l1.2 1M12.4 6.2l-1.2 1"/>',
+  select: '<circle cx="8" cy="8" r="5.5"/><path d="m5.6 8.2 1.7 1.7 3.2-3.6"/>',
+  unpile: '<rect x="2.5" y="6" width="7.5" height="7.5" rx="1.2"/><path d="M6 6V3.8A1.3 1.3 0 0 1 7.3 2.5h5A1.2 1.2 0 0 1 13.5 3.7v5a1.3 1.3 0 0 1-1.3 1.3H10"/>',
   settings: '<path d="M3 5.5h5.5M11.5 5.5H13M3 10.5h1.5M7.5 10.5H13"/><circle cx="10" cy="5.5" r="1.5"/><circle cx="6" cy="10.5" r="1.5"/>',
 };
 
@@ -45,6 +51,12 @@ export function initMenu() {
   document.addEventListener('keydown', onMenuKey);
   menu.addEventListener('keydown', onNavigate);
   menu.addEventListener('click', onClick);
+  document.addEventListener('stickly:note-sheet', (event) => openNoteSheet(event.detail.id));
+  swipeToClose(menu, { grab: (event) => menu.classList.contains('is-sheet') && Boolean(event.target.closest('.menu-sheet-head')), close });
+  // Settings and Done today are sheets on a phone too
+  for (const panel of [settingsPanel, document.getElementById('done-panel')]) {
+    swipeToClose(panel, { grab: (event) => phone.matches && onTopOf(panel, event), close: () => panel.hidePopover() });
+  }
 }
 
 // The menu is a manual popover: it stays open after the right button is let
@@ -64,9 +76,18 @@ function watchForDismiss(on) {
   const method = on ? 'addEventListener' : 'removeEventListener';
   document[method]('pointerdown', onOutsidePress, true);
   document[method]('keydown', onEscape, true);
-  window[method]('resize', close);
+  window[method]('resize', onResize);
   window[method]('blur', close);
-  window[method]('scroll', close, true);
+  window[method]('scroll', onScrollAway, true);
+}
+// a sheet's own list may scroll; the page scrolling closes it
+function onScrollAway(event) {
+  if (!menu.contains(event.target)) close();
+}
+// on a phone the browser bars coming and going resize the window; only a real change closes it
+let openWidth = 0;
+function onResize() {
+  if (!menu.classList.contains('is-sheet') || window.innerWidth !== openWidth) close();
 }
 
 // ---------- Opening ----------
@@ -79,7 +100,9 @@ function onContextMenu(event) {
   if (target.closest('dialog, [popover]:not(#menu)')) return;
 
   event.preventDefault();
+  if (document.querySelector('.note.is-dragging')) return; // a long press that became a drag
   const note = target.closest('.note');
+  if (note && phone.matches) { openNoteSheet(note.dataset.id); return; }
   const fromKeyboard = event.button !== 2 && event.clientX === 0 && event.clientY === 0;
   const anchor = fromKeyboard && note ? cornerOf(note) : { x: event.clientX, y: event.clientY };
   open(note ? noteItems(note.dataset.id) : pageItems(), anchor);
@@ -103,6 +126,17 @@ function cornerOf(el) {
 function open(items, anchor) {
   menu.replaceChildren(...items);
   if (menu.matches(':popover-open')) menu.hidePopover();
+  menu.style.translate = '';
+  openWidth = window.innerWidth;
+  if (!anchor) {
+    // a sheet: CSS puts it along the bottom
+    menu.style.left = '';
+    menu.style.top = '';
+    menu.showPopover();
+    watchForDismiss(true);
+    return;
+  }
+  menu.classList.remove('is-sheet');
   menu.style.left = '0px';
   menu.style.top = '0px';
   menu.showPopover();
@@ -121,9 +155,47 @@ function open(items, anchor) {
 function close() {
   watchForDismiss(false);
   if (menu.matches(':popover-open')) menu.hidePopover();
+  menu.classList.remove('is-sheet');
+  menu.style.translate = '';
 }
 
-// ---------- What is in it ----------
+/** A note's actions as a sheet from the bottom of the screen (phones). */
+export function openNoteSheet(id) {
+  const note = getState().notes.find((n) => n.id === id);
+  if (!note) return;
+  const head = document.createElement('div');
+  head.className = 'menu-sheet-head';
+  head.dataset.color = note.color;
+  head.innerHTML = '<span class="menu-sheet-grab" aria-hidden="true"></span><p class="menu-sheet-text"></p>';
+  head.querySelector('.menu-sheet-text').textContent = note.text;
+  menu.classList.add('is-sheet');
+  open([head, ...sheetItems(note)], null);
+}
+
+/** The sheet: the four most used as big buttons, then color and time, then the rest. */
+function sheetItems(note) {
+  const act = noteActions;
+  const id = note.id;
+  const tiles = document.createElement('div');
+  tiles.className = 'menu-tiles';
+  tiles.append(
+    item('done', t('done'), '', () => act.done(id), 'menu-tile'),
+    item('edit', t('edit'), '', () => act.edit(id), 'menu-tile'),
+    item('focus', t('focusTitle'), '', () => act.focus(id), 'menu-tile'),
+    item('pin', t(note.pinned ? 'unpinShort' : 'pinShort'), '', () => act.pin(id), 'menu-tile'),
+  );
+  return [
+    tiles,
+    colorRow(note),
+    timeRow(note),
+    separator(),
+    item('select', t('selectNote'), '', () => act.select(id)),
+    item('tomorrow', t('toTomorrow'), '', () => act.tomorrow(id)),
+    item('later', t('toLater'), '', () => act.later(id)),
+    ...(isInOpenPile(id) ? [item('unpile', t('takeOffPile'), '', () => act.takeOut(id))] : []),
+    item('trash', t('delete'), '', () => act.remove(id), 'is-danger'),
+  ];
+}
 
 function noteItems(id) {
   const note = getState().notes.find((n) => n.id === id);
@@ -141,6 +213,7 @@ function noteItems(id) {
     separator(),
     item('tomorrow', t('toTomorrow'), 'M', () => act.tomorrow(id)),
     item('later', t('toLater'), 'L', () => act.later(id)),
+    ...(isInOpenPile(id) ? [item('unpile', t('takeOffPile'), '', () => act.takeOut(id))] : []),
     item('trash', t('delete'), '⌫', () => act.remove(id), 'is-danger'),
   ];
 }

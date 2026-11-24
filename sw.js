@@ -1,7 +1,7 @@
 // sw.js — service worker: makes Stickly open instantly and work with no connection.
 // Bump CACHE whenever a file in SHELL is added or removed.
 
-const CACHE = 'stickly-v24';
+const CACHE = 'stickly-v36';
 
 const SHELL = [
   './',
@@ -24,6 +24,7 @@ const SHELL = [
   'js/sound.js',
   'js/trash.js',
   'js/menu.js',
+  'js/sheet.js',
   'js/binpeek.js',
   'js/sweep.js',
   'js/whatnow.js',
@@ -33,10 +34,15 @@ const SHELL = [
   'js/daytime.js',
   'js/time.js',
   'js/days.js',
+  'js/sync.js',
+  'js/syncmerge.js',
+  'js/firebase-config.js',
   'icons/icon.svg',
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
+  'icons/icon-maskable-512.png',
+  'icons/favicon-32.png',
 ];
 
 /** While developing on this machine, always prefer fresh files over cached ones. */

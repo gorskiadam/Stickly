@@ -46,6 +46,8 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const rows = new Map();
 
 export function initDays() {
+  // The logo is the way home: back to the wall, back to the top.
+  document.getElementById('brand')?.addEventListener('click', goHome);
   viewSwitch.addEventListener('click', (event) => {
     const button = event.target.closest('[data-view]');
     if (button) setView(button.dataset.view);
@@ -79,6 +81,20 @@ export function setView(view) {
   if (view === current()) return;
   apply(view, true);
   if (getState().settings.view !== view) setSetting('view', view);
+}
+
+/** Tap the logo: the wall, scrolled to the top, with a little hop of the note. */
+function goHome() {
+  const mark = document.querySelector('#brand svg');
+  mark?.animate([
+    { transform: 'none' },
+    { transform: 'translateY(-4px) rotate(-8deg) scale(1.1)' },
+    { transform: 'none' },
+  ], { duration: 420, easing: 'cubic-bezier(0.34, 1.5, 0.64, 1)' });
+  document.dispatchEvent(new CustomEvent('stickly:home'));
+  if (current() !== 'wall') setView('wall');
+  const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: 0, left: 0, behavior: smooth ? 'smooth' : 'auto' });
 }
 
 /** V: Wall → Today → Tomorrow → Wall. */

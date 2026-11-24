@@ -11,6 +11,7 @@
   <!-- Installable on a phone home screen; works offline (see sw.js). -->
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Stickly">
@@ -61,7 +62,7 @@
   </svg>
 
   <header class="topbar">
-    <div class="brand">
+    <button id="brand" class="brand" type="button" aria-label="Stickly: back to the top of the wall" data-i18n-label="brandHome">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
         <g transform="rotate(-6 12 12)">
           <path d="M5 3h14a2 2 0 0 1 2 2v9l-7 7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="#FFDD55"/>
@@ -69,7 +70,7 @@
         </g>
       </svg>
       <span>Stickly</span>
-    </div>
+    </button>
 
     <!-- Wall, Today or Tomorrow: the same notes, three ways (V goes round them; days.js). -->
     <div id="view-switch" class="view-switch glass" role="group" aria-label="View" data-i18n-label="view">
@@ -150,7 +151,7 @@
       <p id="bin-empty" class="bin-empty" data-i18n="binEmpty">The trash is empty.</p>
     </div>
     <footer class="bin-foot">
-      <p id="bin-hint" class="bin-hint" data-i18n="binHint">Hover to peek. Drag one out to put it back.</p>
+      <p id="bin-hint" class="bin-hint" data-i18n="binHint" data-i18n-touch="binHintTouch">Hover to peek. Drag one out to put it back.</p>
       <button id="bin-clear" class="bin-clear" type="button">
         <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -214,16 +215,6 @@
       </div>
     </fieldset>
 
-    <h3 class="settings-group" data-i18n="groupFocus">Focus</h3>
-    <fieldset class="setting setting-row">
-      <legend class="visually-hidden" data-i18n="focusFull">Full screen</legend>
-      <span aria-hidden="true" data-i18n="focusFull">Full screen</span>
-      <div class="segmented">
-        <label><input type="radio" name="focusfull" value="on"><span data-i18n="soundOn">On</span></label>
-        <label><input type="radio" name="focusfull" value="off"><span data-i18n="soundOff">Off</span></label>
-      </div>
-    </fieldset>
-
     <h3 class="settings-group" data-i18n="groupGeneral">Sound and language</h3>
     <fieldset class="setting setting-row">
       <legend class="visually-hidden" data-i18n="sound">Sound</legend>
@@ -242,6 +233,43 @@
         <label><input type="radio" name="lang" value="pl"><span lang="pl">Polski</span></label>
       </div>
     </fieldset>
+
+    <!-- Sync: the same notes on every device, signed in with Google or an email and password (sync.js). -->
+    <h3 class="settings-group" data-i18n="groupSync">Sync</h3>
+    <div class="setting settings-sync">
+      <p id="sync-status" class="sync-status" aria-live="polite">Sign in to have the same notes on all your devices.</p>
+      <div class="sync-buttons">
+      <button id="sync-signin" class="sync-signin" type="button">
+        <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+          <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1z"/>
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+        </svg>
+        <span data-i18n="syncSignIn">Continue with Google</span>
+      </button>
+      <button id="sync-email-open" class="sync-signin" type="button">
+        <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+          <rect x="2" y="3.75" width="14" height="10.5" rx="2"/>
+          <path d="m2.75 5 6.25 4.75L15.25 5" stroke-linecap="round"/>
+        </svg>
+        <span data-i18n="syncUseEmail">Sign in with email</span>
+      </button>
+      </div>
+      <form id="sync-email" class="sync-email" novalidate hidden>
+        <input id="sync-email-address" class="name-input" type="email" autocomplete="username" inputmode="email"
+               spellcheck="false" required placeholder="Email" data-i18n-placeholder="syncEmail" aria-label="Email" data-i18n-label="syncEmail">
+        <input id="sync-email-password" class="name-input" type="password" autocomplete="current-password" minlength="6"
+               required placeholder="Password" data-i18n-placeholder="syncPassword" aria-label="Password" data-i18n-label="syncPassword">
+        <p id="sync-email-note" class="sync-email-note" aria-live="polite" hidden></p>
+        <div class="sync-email-actions">
+          <button id="sync-email-submit" class="sync-signin sync-email-submit" type="submit" data-i18n="syncEmailSignIn">Sign in</button>
+          <button id="sync-email-mode" class="settings-link" type="button" data-i18n="syncEmailToCreate">Create an account</button>
+        </div>
+        <button id="sync-email-reset" class="settings-link sync-email-reset" type="button" data-i18n="syncForgot">Forgot password?</button>
+      </form>
+      <button id="sync-signout" class="settings-link" type="button" data-i18n="syncSignOut" hidden>Sign out</button>
+    </div>
 
     <h3 class="settings-group" data-i18n="groupData">Backup</h3>
     <div class="setting settings-data">
@@ -268,7 +296,9 @@
     <div id="pile-spread" class="pile-spread" hidden>
       <div class="pile-bar glass" role="toolbar" aria-labelledby="pile-spread-count">
         <span id="pile-spread-count" class="pile-bar-count"></span>
-        <span class="pile-bar-hint" data-i18n="pileHint">Drag one out to take it off the pile.</span>
+        <span class="pile-bar-hint" data-i18n="pileHint">Move them around freely. Drop one here to take it out.</span>
+        <span class="pile-bar-hint pile-bar-hint-touch" data-i18n="pileHintTouch">Hold a note to move it. Drop it here to take it out.</span>
+        <span class="pile-bar-drop" data-i18n="pileDropHere" aria-hidden="true">Drop to take it out of the pile</span>
         <button id="pile-unstack" class="pile-bar-button" type="button" data-i18n="unstack">Unstack</button>
         <button id="pile-close" class="pile-bar-button is-primary" type="button" data-i18n="pileClose">Done</button>
       </div>
@@ -312,6 +342,50 @@
            stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L12 4.5"/></svg>
       <span data-i18n="dropToBin">Drop to throw away</span>
     </div>
+  </div>
+
+  <!-- The right edge: drop a note here to put it in the Later box (later.js). -->
+  <div id="drop-zone-later" class="drop-zone drop-zone-later" aria-hidden="true">
+    <div class="drop-zone-label">
+      <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5h11v6.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/><path d="M2.5 6.5 4 3.5h8l1.5 3M6.5 9h3"/></svg>
+      <span data-i18n="dropToLater">Drop to move for later</span>
+    </div>
+  </div>
+
+  <!-- Several notes selected (⌘-click, or ⌘A): what to do with all of them at once (ui.js). -->
+  <div id="select-bar" class="select-bar glass" role="toolbar" aria-labelledby="select-count" hidden>
+    <span id="select-count" class="select-count"></span>
+    <span class="select-colors">
+      <button class="select-swatch" type="button" data-color="yellow"></button>
+      <button class="select-swatch" type="button" data-color="pink"></button>
+      <button class="select-swatch" type="button" data-color="blue"></button>
+      <button class="select-swatch" type="button" data-color="green"></button>
+    </span>
+    <span class="select-rule" aria-hidden="true"></span>
+    <button class="select-action" type="button" data-act="done">
+      <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8.5 3.2 3L13 4.5"/></svg>
+      <span data-i18n="selDone">Done</span>
+    </button>
+    <button class="select-action" type="button" data-act="later">
+      <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6h11v7a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM2.5 6l1.5-3h8l1.5 3M6.5 8.5h3" stroke-linecap="round"/></svg>
+      <span data-i18n="selLater">Later</span>
+    </button>
+    <button class="select-action" type="button" data-act="tomorrow">
+      <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1.5 12.5h13M4.5 12.5a3.5 3.5 0 0 1 7 0M8 3v2.5M3.2 6.2l1.3 1.2M12.8 6.2l-1.3 1.2"/></svg>
+      <span data-i18n="selTomorrow">Tomorrow</span>
+    </button>
+    <button class="select-action" type="button" data-act="stack">
+      <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h6.5" stroke-linecap="round"/></svg>
+      <span data-i18n="selStack">Stack</span>
+    </button>
+    <button class="select-action is-danger" type="button" data-act="delete">
+      <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9L12 4.5"/></svg>
+      <span data-i18n="selDelete">Delete</span>
+    </button>
+    <button class="select-close" type="button" data-act="clear">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+    </button>
   </div>
 
   <form id="capture" class="capture" autocomplete="off">
@@ -431,16 +505,68 @@
       </div>
     </div>
 
-    <!-- The Later pile: a small stack that shows only a count. -->
-    <button id="pile" class="pile" type="button" popovertarget="later" hidden>
-      <span id="pile-count">+0</span>
+    <!-- The Later box: a small cardboard box in the corner. Notes put off for
+         later go in through its flaps; click it to look inside (later.js). -->
+    <button id="pile" class="box" type="button" aria-label="Later" data-i18n-label="later" aria-expanded="false" aria-controls="later">
+      <svg viewBox="0 0 48 46" width="50" height="48" aria-hidden="true">
+        <defs>
+          <linearGradient id="box-front" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#D2A86C"/>
+            <stop offset="1" stop-color="#B98D52"/>
+          </linearGradient>
+          <linearGradient id="box-flap" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#E2BC83"/>
+            <stop offset="1" stop-color="#CDA166"/>
+          </linearGradient>
+        </defs>
+        <ellipse class="box-shadow" cx="24" cy="43.6" rx="17" ry="1.9"/>
+        <!-- the inside, seen past the open flaps -->
+        <path class="box-inside" d="M7 18.5 11 12.5h26l4 6z" fill="#7A5631"/>
+        <path class="box-inside" d="M11 12.5h26l-1.2 2.4H12.2z" fill="#5E4224"/>
+        <g class="box-flap box-flap-back">
+          <path d="M11 12.5h26l-2-7H13z" fill="url(#box-flap)"/>
+        </g>
+        <g class="box-body">
+          <rect x="7" y="18.5" width="34" height="23.5" rx="1.6" fill="url(#box-front)"/>
+          <path d="M7 18.5h34" stroke="#8C6435" stroke-opacity="0.5" stroke-width="1"/>
+          <rect x="21" y="18.5" width="6" height="8" fill="#E8CFA0" fill-opacity="0.55"/>
+          <rect x="16" y="23.5" width="16" height="3.4" rx="1.7" fill="#6E4D2A" fill-opacity="0.55"/>
+        </g>
+        <g class="box-flap box-flap-left">
+          <path d="M7 18.5 11 12.5h13v6z" fill="url(#box-flap)"/>
+          <path d="M24 12.5v6" stroke="#8C6435" stroke-opacity="0.45" stroke-width="0.8"/>
+        </g>
+        <g class="box-flap box-flap-right">
+          <path d="M41 18.5 37 12.5H24v6z" fill="url(#box-flap)"/>
+          <rect x="21" y="12.5" width="6" height="6" fill="#E8CFA0" fill-opacity="0.55"/>
+        </g>
+      </svg>
+      <span id="pile-count" class="box-count">0</span>
     </button>
   </form>
 
-  <div id="later" class="panel later" popover aria-labelledby="later-title">
-    <h2 id="later-title" class="panel-title" data-i18n="later">Later</h2>
-    <p id="later-hint" class="panel-hint"></p>
-    <ul id="later-list" class="later-list"></ul>
+  <!-- Inside the Later box: the notes put off for later, as small stickies
+       that can be edited, recolored, timed, and dragged out onto the wall. -->
+  <div id="later" class="box-peek glass" popover aria-labelledby="later-title">
+    <header class="bin-head">
+      <div class="bin-heading">
+        <h2 id="later-title" class="bin-title" data-i18n="later">Later</h2>
+        <p id="later-hint" class="bin-sub"></p>
+      </div>
+      <span id="later-count" class="bin-count"></span>
+    </header>
+    <div class="box-well">
+      <ul id="later-list" class="box-notes"></ul>
+      <p id="later-empty" class="bin-empty" data-i18n="laterEmpty">Nothing put off for later.</p>
+    </div>
+    <footer class="bin-foot">
+      <p id="later-tip" class="bin-hint" data-i18n="laterTip" data-i18n-touch="laterTipTouch">Double-click to edit. Drag one onto the wall.</p>
+      <button id="later-all" class="bin-clear" type="button">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3.5M3.5 7.5 8 3l4.5 4.5"/></svg>
+        <span id="later-all-label"></span>
+      </button>
+    </footer>
   </div>
 
   <!-- Stickly's right-click menu (see menu.js). -->
@@ -451,7 +577,7 @@
     <header class="focus-bar">
       <p class="focus-where"><span id="focus-when"></span><span id="focus-position" class="focus-position"></span></p>
       <div class="focus-bar-tools">
-        <button id="focus-full" class="icon-button" type="button" aria-label="Full screen" data-i18n-label="fullScreen" title="Full screen (F)">
+        <button id="focus-full" class="icon-button" type="button" aria-label="Full screen" data-i18n-label="fullScreen" title="Full screen (S)">
           <svg class="icon-enter" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>
           <svg class="icon-exit" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5"/></svg>
         </button>
@@ -526,7 +652,7 @@
   </div>
 
   <!-- Read out when a note gets keyboard focus. -->
-  <p id="note-help" class="visually-hidden" data-i18n="noteHelp">Press Enter to edit, D when done, F to focus, P to pin, C to change color, + or − to change the time, M to move to tomorrow, L to move to Later, Backspace to delete. Shift and the arrow keys move it.</p>
+  <p id="note-help" class="visually-hidden" data-i18n="noteHelp">Press Enter to edit, D when done, F to focus, S for full screen, type a number (like 25) for minutes, P to pin, C to change color, + or − to change the time, M to move to tomorrow, L to move to Later, Backspace to delete. Shift and the arrow keys move it.</p>
 
   <!-- Screen-reader announcements ("Note added", etc.). -->
   <div id="live" class="visually-hidden" aria-live="polite"></div>

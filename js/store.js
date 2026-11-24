@@ -89,8 +89,27 @@ export function hasSpace() {
 // Every change to the notes saves a snapshot first, so Cmd+Z can step back
 // through anything: adding, editing, moving, pinning, completing, deleting.
 
+/**
+ * Several changes as one step for Undo (acting on several selected notes):
+ * between beginBatch() and endBatch() only the first change saves a snapshot.
+ */
+let batchDepth = 0;
+let batchSaved = false;
+
+export function beginBatch() {
+  if (batchDepth++ === 0) batchSaved = false;
+}
+
+export function endBatch() {
+  batchDepth = Math.max(0, batchDepth - 1);
+}
+
 /** Remember how things are, just before a change. */
 function checkpoint() {
+  if (batchDepth) {
+    if (batchSaved) return;
+    batchSaved = true;
+  }
   past.push(snapshot());
   if (past.length > HISTORY_MAX) past.shift();
   future = [];
@@ -176,7 +195,7 @@ export function addNotes(items, { tomorrow = false } = {}) {
 
 /** Change a note's text. Returns true if something actually changed. */
 export function updateNote(id, text) {
-  const note = state.notes.find((n) => n.id === id);
+  const note = findNote(id); // on the wall or in Later
   const clean = cleanText(text);
   if (!note || !clean || note.text === clean) return false;
   checkpoint();
@@ -343,7 +362,7 @@ export function reorderTomorrow(id, toIndex) {
 
 /** Change a wall note's paper color. */
 export function setColor(id, color) {
-  const note = state.notes.find((n) => n.id === id);
+  const note = findNote(id); // on the wall or in Later
   if (!note || !COLORS.includes(color) || note.color === color) return;
   checkpoint();
   note.color = color;
@@ -435,6 +454,7 @@ export function stackNotes(id, ontoId) {
   // the pile underneath comes up too, so the new pile is the top of the wall
   for (const n of pileMembers(pileId)) n.z = ++z;
   for (const n of moving.pile ? pileMembers(moving.pile) : [moving]) {
+    delete n.spread; // a newcomer gets a fresh place when the pile is opened
     n.pile = pileId;
     n.x = onto.x;
     n.y = onto.y;
@@ -470,12 +490,46 @@ export function unstackPile(pileId) {
   commit();
 }
 
-/** A pile needs two notes; one left on its own is just a note again. */
+/**
+ * Arrange an open pile by hand: `spots` gives notes their place while the pile
+ * is spread out ({ id → { x, y, z } }, x / y from where the pile sits). The
+ * notes stay in the pile; closed up, it looks the same as before.
+ */
+export function arrangePile(pileId, spots) {
+  const members = pileMembers(pileId);
+  if (!members.length) return;
+  checkpoint();
+  for (const n of members) {
+    const spot = cleanSpot(spots[n.id]);
+    if (spot) n.spread = spot;
+  }
+  commit();
+}
+
+/** Take one note off its pile; it gets the next free spot on the wall. */
+export function takeOffPile(id) {
+  const note = state.notes.find((n) => n.id === id);
+  if (!note?.pile) return false;
+  checkpoint();
+  note.pile = null;
+  unplace(note);
+  note.z = topZ() + 1;
+  commit();
+  return true;
+}
+
+function cleanSpot(spot) {
+  if (!spot || !Number.isFinite(spot.x) || !Number.isFinite(spot.y)) return null;
+  return { x: Math.round(spot.x), y: Math.round(spot.y), z: Number.isFinite(spot.z) ? Math.round(spot.z) : 0 };
+}
+
+/** A pile needs two notes; one left on its own is just a note again (and forgets its place in it). */
 function tidyPiles(target) {
   for (const n of target.later) n.pile = null;
   const counts = new Map();
   for (const n of target.notes) if (n.pile) counts.set(n.pile, (counts.get(n.pile) || 0) + 1);
   for (const n of target.notes) if (n.pile && counts.get(n.pile) < 2) n.pile = null;
+  for (const n of [...target.notes, ...target.later]) if (!n.pile && 'spread' in n) delete n.spread;
 }
 
 /**
@@ -526,15 +580,51 @@ export function moveToLater(id) {
   return true;
 }
 
-/** Bring a note from the Later pile onto the wall. Returns false if there is no room. */
-export function promoteNote(id) {
+/**
+ * Bring a note from the Later box onto the wall, at `at` ({ x, y } on the
+ * wall, where it was dropped) or the next free spot. False if there is no room.
+ */
+export function promoteNote(id, at = null) {
   const index = state.later.findIndex((n) => n.id === id);
   if (index < 0 || !hasSpace()) return false;
   checkpoint();
   const [note] = state.later.splice(index, 1);
-  state.notes.push(unplace(note));
+  unplace(note);
+  note.pile = null;
+  if (at) {
+    note.x = Math.max(0, Math.round(at.x));
+    note.y = Math.max(0, Math.round(at.y));
+    note.z = topZ() + 1;
+  }
+  state.notes.push(note);
   commit();
   return true;
+}
+
+/** Fill the wall from the Later box, oldest first, as far as there is room. Returns the ids moved. */
+export function promoteAll() {
+  if (!state.later.length || !hasSpace()) return [];
+  checkpoint();
+  const moved = [];
+  while (state.later.length && hasSpace()) {
+    const note = unplace(state.later.pop());
+    note.pile = null;
+    state.notes.push(note);
+    moved.push(note.id);
+  }
+  commit();
+  return moved;
+}
+
+/** Put a Later note in a new place in the box. */
+export function reorderLater(id, toIndex) {
+  const from = state.later.findIndex((n) => n.id === id);
+  const to = Math.max(0, Math.min(state.later.length - 1, toIndex));
+  if (from < 0 || from === to) return;
+  checkpoint();
+  const [note] = state.later.splice(from, 1);
+  state.later.splice(to, 0, note);
+  commit();
 }
 
 // ---------- Settings ----------
@@ -818,6 +908,7 @@ function sanitizeNotes(list, seen) {
       y: Number.isFinite(n.y) ? n.y : null,
       z: Number.isFinite(n.z) ? n.z : 0,
       pile: typeof n.pile === 'string' && n.pile ? n.pile.slice(0, 40) : null,
+      ...(n.pile && cleanSpot(n.spread) ? { spread: cleanSpot(n.spread) } : {}),
       ...(DAY_PATTERN.test(n.arrivedOn) ? { arrivedOn: n.arrivedOn } : {}),
     });
   }
@@ -847,6 +938,49 @@ export function importData(text) {
   state.tomorrow = clean.tomorrow;
   state.settings = { ...clean.settings, lang: clean.settings.lang ?? state.settings.lang };
   rebalance(state);
+  commit();
+  return true;
+}
+
+// ---------- Sync ----------
+// sync.js keeps the notes the same on every device. These two are its way in:
+// what gets shared, and how a merged copy from the cloud comes back.
+// Look and feel (theme, sound, which view is up) stay per device.
+
+/** The settings that follow you to every device. */
+const SYNCED_SETTINGS = ['limit', 'name', 'lang', 'clock'];
+
+/** Everything that is shared between devices, as a plain copy. */
+export function syncData() {
+  const settings = {};
+  for (const key of SYNCED_SETTINGS) settings[key] = state.settings[key];
+  return JSON.parse(JSON.stringify({
+    notes: state.notes, later: state.later, tomorrow: state.tomorrow,
+    done: state.done, trash: state.trash, lastDay: state.lastDay, settings,
+  }));
+}
+
+/**
+ * Take in a merged copy from sync. It is checked like anything loaded from
+ * storage. Undo starts over: the old steps belong to another version.
+ */
+export function applySynced(data) {
+  let clean;
+  try {
+    clean = sanitize({ ...data, settings: { ...state.settings, ...(data.settings || {}) } });
+  } catch {
+    return false;
+  }
+  state.notes = clean.notes;
+  state.later = clean.later;
+  state.tomorrow = clean.tomorrow;
+  state.done = clean.done;
+  state.trash = clean.trash;
+  state.lastDay = clean.lastDay;
+  for (const key of SYNCED_SETTINGS) state.settings[key] = clean.settings[key];
+  past = [];
+  future = [];
+  historyVersion++;
   commit();
   return true;
 }

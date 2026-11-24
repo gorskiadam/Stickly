@@ -15,7 +15,6 @@ import { getLang, applyStrings } from './strings.js';
 const $ = (id) => document.getElementById(id);
 const radios = (name) => [...document.querySelectorAll(`input[name="${name}"]`)];
 const clockRadios = radios('clock');
-const focusRadios = radios('focusfull');
 
 const root = document.documentElement;
 const themeRadios = [...document.querySelectorAll('input[name="theme"]')];
@@ -50,7 +49,6 @@ export function initSettings() {
   limitDown.addEventListener('click', () => setLimit(getState().settings.limit - 1));
   limitUp.addEventListener('click', () => setLimit(getState().settings.limit + 1));
   clockRadios.forEach((radio) => radio.addEventListener('change', () => setSetting('clock', radio.value)));
-  focusRadios.forEach((radio) => radio.addEventListener('change', () => setSetting('focusFullscreen', radio.value === 'on')));
   $('data-export').addEventListener('click', () => {
     const stamp = new Date().toISOString().slice(0, 10);
     download(`stickly-backup-${stamp}.json`, exportData(), 'application/json');
@@ -82,9 +80,7 @@ function render(state) {
   soundRadios.forEach((radio) => { radio.checked = (radio.value === 'on') === state.settings.sound; });
 
   if (document.activeElement !== nameInput) nameInput.value = state.settings.name || '';
-  const { focusFullscreen } = state.settings;
   clockRadios.forEach((radio) => { radio.checked = (radio.value === '12') === uses12h(); });
-  focusRadios.forEach((radio) => { radio.checked = (radio.value === 'on') === focusFullscreen; });
   limitValue.textContent = limit;
   limitDown.disabled = limit <= LIMIT_MIN;
   limitUp.disabled = limit >= LIMIT_MAX;

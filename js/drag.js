@@ -4,6 +4,7 @@
 //           quick sideways swipe      → complete the note
 //   Either: drop it on the trash, or anywhere along the left edge → throw it away
 //           drop it onto another note → the two stack into a pile
+//           drop it on a target (the Tomorrow tab, an open pile's bar) → that target takes it
 // A pile is picked up and moved as one. Notes can go anywhere on the wall.
 // Vertical touch movement is left alone so the page still scrolls.
 
@@ -36,8 +37,10 @@ export function dropZoneWidth() {
  * @param {(el: HTMLElement, group: HTMLElement[]) => HTMLElement | null} handlers.stackTarget  the note it would stack onto
  * @param {(target: HTMLElement | null) => void} handlers.onStackHover  hovering over a note to stack onto (or not any more)
  * @param {(el: HTMLElement, target: HTMLElement) => void} handlers.onStack  dropped onto another note
+ * @param {() => Array<{ hit: (x: number, y: number) => boolean, hover: (on: boolean) => void, drop: (el: HTMLElement) => void }>} handlers.targets
+ *        other places a note can be dropped on (checked by the pointer, first match wins)
  */
-export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, onDragging, group, stackTarget, onStackHover, onStack }) {
+export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, onDragging, group, stackTarget, onStackHover, onStack, isOverLater = () => false, onLaterHover = () => {}, onLater = () => {}, targets = () => [] }) {
   /** The gesture in progress, or null. */
   let g = null;
 
@@ -63,6 +66,8 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
       grabX: e.pageX - el.offsetLeft, grabY: e.pageY - el.offsetTop,
       rot: rotOf(el),
       overTrash: false,
+      overLater: false,
+      spot: null, // a drop target (targets()) it's over
       target: null, // a note to stack onto
       group: [el],
       timer: 0,
@@ -94,7 +99,17 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
         for (const el of g.group) el.classList.toggle('is-over-trash', over); // it shrinks, ready to be thrown
         onTrashHover(over);
       }
-      const target = over ? null : stackTarget(g.el, g.group);
+      // over the Later box or the right-hand strip: it opens up to take the
+      // note. The note itself counts, not just the pointer: carried by its
+      // left side, the note is in the strip before the pointer is.
+      const overLater = !over && isOverLater(e.clientX, e.clientY, noteCenter(e));
+      if (overLater !== g.overLater) {
+        g.overLater = overLater;
+        for (const el of g.group) el.classList.toggle('is-over-trash', overLater || over);
+        onLaterHover(overLater);
+      }
+      setSpot(over || overLater ? null : spotAt(e.clientX, e.clientY));
+      const target = over || overLater || g.spot ? null : stackTarget(g.el, g.group);
       if (target !== g.target) {
         g.target = target;
         onStackHover(target);
@@ -102,6 +117,18 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
     } else if (g.mode === 'swiping') {
       g.el.style.transform = `translateX(${dx}px) rotate(${g.rot})`;
     }
+  }
+
+  /** The drop target under the pointer, if any. */
+  function spotAt(x, y) {
+    return targets().find((spot) => spot.hit(x, y)) || null;
+  }
+
+  function setSpot(spot) {
+    if (spot === g.spot || (spot && g.spot && spot.key && spot.key === g.spot.key)) return;
+    g.spot?.hover(false);
+    g.spot = spot;
+    spot?.hover(true);
   }
 
   /** Work out what the first few pixels of movement mean. */
@@ -117,6 +144,17 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
     }
   }
 
+  /**
+   * Where the carried note's middle is on screen, worked out from the pointer
+   * and where the note was grabbed (the drawn note can trail a frame behind).
+   */
+  function noteCenter(e) {
+    return {
+      x: e.clientX - g.grabX + g.el.offsetWidth / 2,
+      y: e.clientY - g.grabY + g.el.offsetHeight / 2,
+    };
+  }
+
   /** Over the trash can itself, or anywhere in the strip along the left edge. */
   function isOverTrash(x, y) {
     if (x < dropZoneWidth()) return true;
@@ -128,6 +166,8 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
   function startDrag() {
     if (!g) return;
     g.mode = 'dragging';
+    window.getSelection()?.removeAllRanges(); // nothing on the page turns blue as the note passes over it
+    if (g.touch) navigator.vibrate?.(8); // a small tick: the long press took
     onDragging(true);
     g.group = group(g.el);
     // the rest of a pile comes along, in its own order, just under the held note
@@ -136,6 +176,8 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
       if (el !== g.el) { el.classList.add('is-carried'); el.style.zIndex = String(9000 + i); }
     });
     g.el.classList.add('is-dragging');
+    // it turns and shrinks around the spot it's held by, so it stays under the pointer
+    g.el.style.transformOrigin = `${g.grabX}px ${g.grabY}px`;
     try { g.el.setPointerCapture(g.pointerId); } catch { /* pointer already gone */ }
     // Grabbed near the top, the bottom swings out behind; near the bottom, hardly at all.
     const height = g.el.offsetHeight || 1;
@@ -162,8 +204,10 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
     g.swing += g.swingSpeed * dt;
     // lifting off the wall, or shrinking and tipping over the trash
     const ease = 1 - Math.exp(-dt * 16);
-    g.lift += ((g.overTrash ? 0.6 : 1.05) - g.lift) * ease;
-    g.tip += ((g.overTrash ? -8 : 0) - g.tip) * ease;
+    const away = g.overTrash || g.overLater || Boolean(g.spot);
+    // over a small target (a tab) the note shrinks right down, so the target shows
+    g.lift += ((g.spot?.shrink || (away ? 0.6 : 1.05)) - g.lift) * ease;
+    g.tip += ((away ? -8 : 0) - g.tip) * ease;
     placeUnderPointer();
     g.frame = requestAnimationFrame(carry);
   }
@@ -180,7 +224,17 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
 
   function onUp(e) {
     if (!g || e.pointerId !== g.pointerId) return;
-    const { el, mode, overTrash, target, group: carried, swing, lift } = g;
+    // where it's let go is what counts, even if no move was reported there
+    if (g.mode === 'dragging' && !g.overTrash && !g.overLater && isOverLater(e.clientX, e.clientY, noteCenter(e))) {
+      g.overLater = true;
+      g.target = null;
+      onStackHover(null);
+    }
+    if (g.mode === 'dragging' && !g.overTrash && !g.overLater) {
+      const spot = spotAt(e.clientX, e.clientY);
+      if (spot) { setSpot(spot); g.target = null; onStackHover(null); }
+    }
+    const { el, mode, overTrash, overLater, target, spot, group: carried, swing, lift } = g;
     const dx = g.x - g.startX;
     const dy = g.y - g.startY;
     const x = g.x - g.grabX;
@@ -190,6 +244,8 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
     if (mode === 'dragging') swallowNextClick(); // a drop is not a tap
     if (mode === 'dragging' && target) onStackHover(null);
     if (mode === 'dragging' && overTrash) { release(carried); onTrash(el); }
+    else if (mode === 'dragging' && overLater) { release(carried); onLater(el); }
+    else if (mode === 'dragging' && spot) { spot.hover(false); release(carried); spot.drop(el); }
     else if (mode === 'dragging' && target) { putDown(carried, dx, dy); onStack(el, target); }
     else if (mode === 'dragging') drop(el, x, y, carried, dx, dy, swing, lift);
     else if (mode === 'swiping' && Math.abs(dx) >= SWIPE_DISTANCE) onSwipe(el, dx);
@@ -198,13 +254,15 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
 
   function onCancel(e) {
     if (!g || e.pointerId !== g.pointerId) return;
-    const { el, mode, overTrash, target, group: carried } = g;
+    const { el, mode, overTrash, overLater, target, spot, group: carried } = g;
     end();
+    spot?.hover(false);
     if (overTrash) onTrashHover(false);
+    if (overLater) onLaterHover(false);
     if (target) onStackHover(null);
     if (mode === 'dragging') {
       release(carried);
-      for (const one of carried) settle(one).then(() => one.classList.remove('is-dragging'));
+      for (const one of carried) settle(one).then(() => { one.classList.remove('is-dragging'); one.style.transformOrigin = ''; });
     } else if (mode === 'swiping') settle(el);
   }
 
@@ -220,12 +278,12 @@ export function initDrag(wall, { onDrop, onSwipe, trash, onTrashHover, onTrash, 
     const rot = rotOf(el);
     const from = `rotate(${rot}) rotate(${swing.toFixed(2)}deg) scale(${lift.toFixed(3)})`;
     el.style.transform = '';
-    onDrop(el, x, y);
+    onDrop(el, x, y, dx, dy);
     const { easing, duration } = spring(SPRINGS.settle);
     el.animate(
       [{ transform: from }, { transform: `rotate(${rot})` }],
       { duration: reduced() ? 0 : duration, easing },
-    ).finished.finally(() => el.classList.remove('is-dragging'));
+    ).finished.finally(() => { el.classList.remove('is-dragging'); el.style.transformOrigin = ''; });
   }
 
   /** Leave notes where they were carried to (the wall then glides them into place). */

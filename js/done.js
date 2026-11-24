@@ -27,6 +27,9 @@ function render() {
   const items = doneItems();
   chip.hidden = items.length === 0;
   chipText.textContent = t('doneChip', { n: items.length });
+  // on a phone the chip shows just the tick and the number (styles.css)
+  chip.dataset.n = String(items.length);
+  chip.setAttribute('aria-label', chipText.textContent);
   if (!items.length && panel.matches(':popover-open')) panel.hidePopover();
   list.replaceChildren(...items.map(doneItem));
 }

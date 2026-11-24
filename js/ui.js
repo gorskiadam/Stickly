@@ -8,12 +8,14 @@
 import {
   getState, subscribe, updateNote, removeNote, placeNote, assignPlaces,
   togglePin, setColor, setMinutes, moveToLater, tidyUp, COLORS,
-  pileMembers, stackNotes, movePile, unstackPile, removeNotes, moveToTomorrow,
+  pileMembers, stackNotes, movePile, unstackPile, removeNotes, moveToTomorrow, MINUTES_MAX,
+  beginBatch, endBatch, arrangePile, takeOffPile,
 } from './store.js';
 import { flyAway, scrollBehavior, spring, SPRINGS } from './motion.js';
 import { crumpleShapes, creaseImage } from './paper.js';
 import { throwAway, tossTo, trashElement, setTrashOpen, setTrashAwake } from './trash.js';
 import { initDrag, dropZoneWidth } from './drag.js';
+import { fileIntoBox, setBoxAwake, setBoxOpen, isOverBox } from './later.js';
 import { offerUndo, showToast, isTyping } from './feedback.js';
 import { whoosh, slap, pinClick, pick, riffle } from './sound.js';
 import { t, formatMinutes } from './strings.js';
@@ -48,6 +50,10 @@ export function initUI() {
   render(getState());
 
   wall.addEventListener('click', onWallClick);
+  // the logo was tapped: fold an open pile and let go of a selection on the way home
+  document.addEventListener('stickly:home', () => { if (spreadPile) closeSpread(); clearSelection(); });
+  // was it a finger? (a tap on a phone opens the note's sheet; see countTap)
+  wall.addEventListener('pointerdown', (event) => { lastPointer = event.pointerType || 'mouse'; }, true);
   // Note shortcuts work on the focused note, or else on the note under the
   // mouse: no need to click it (or right-click it) first.
   document.addEventListener('keydown', onNoteKey);
@@ -55,22 +61,36 @@ export function initUI() {
     if (event.pointerType === 'mouse') hoveredNote = event.target.closest('.note');
   });
   wall.addEventListener('pointerleave', () => { hoveredNote = null; });
-  window.addEventListener('resize', () => render(getState()));
+  window.addEventListener('resize', () => { spreadShift = null; render(getState()); });
+  initSelection();
   initDrag(wall, {
     onDrop: dropNote,
     onSwipe: (el, dx) => dismiss(el.dataset.id, 'done', dx),
     trash: trashElement(),
     onTrashHover: setTrashOpen,
     onTrash: (el) => {
+      if (carryingSelection(el)) { actOnSelection('delete'); return; }
       const pile = pileOf(el);
       if (pile) throwPile(pile);
       else dismiss(el.dataset.id, 'trash');
     },
-    onDragging: setTrashAwake,
+    onDragging: (awake) => { setTrashAwake(awake); setBoxAwake(awake); },
+    isOverLater: isOverBox,
+    onLaterHover: setBoxOpen,
+    onLater: (el) => {
+      if (carryingSelection(el)) { actOnSelection('later'); return; }
+      const pile = pileOf(el);
+      const ids = pile ? pileMembers(pile).map((n) => n.id) : [el.dataset.id];
+      ids.forEach((id, i) => setTimeout(() => sendToLater(id), reducedMotion.matches ? 0 : i * 120));
+    },
     group: carriedWith,
     stackTarget,
     onStackHover: showStackTarget,
-    onStack: (el, target) => { if (stackNotes(el.dataset.id, target.dataset.id)) { slap(); settlePile(target); } },
+    onStack: (el, target) => {
+      if (carryingSelection(el)) { stackSelection(target); return; }
+      if (stackNotes(el.dataset.id, target.dataset.id)) { slap(); settlePile(target); }
+    },
+    targets: dropTargets,
   });
   initSpread();
 }
@@ -104,6 +124,7 @@ function render(state) {
   wall.hidden = notes.length === 0;
   emptyLine.hidden = notes.length > 0;
   emptyLine.textContent = t(later.length ? 'emptyWithLater' : 'empty');
+  showSelection();
   fitWall();
   firstRenderDone = true;
 }
@@ -271,7 +292,8 @@ function buildNoteElement(id) {
       <svg viewBox="0 0 32 40" width="32" height="40" aria-hidden="true"><use href="#pin"/></svg>
     </button>
     <button class="note-peel" type="button" tabindex="-1"></button>
-    <span class="pile-count" hidden aria-hidden="true"></span>`;
+    <span class="pile-count" hidden aria-hidden="true"></span>
+    <span class="note-check" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"/></svg></span>`;
 
   el.addEventListener('animationend', (event) => {
     if (event.target !== el) return;
@@ -327,6 +349,19 @@ function onWallClick(event) {
 
   const el = target.closest('.note');
   if (!el) return;
+  // ⌘-click (Ctrl-click) or Shift-click: add it to the selection, or take it out
+  if (event.metaKey || event.ctrlKey || event.shiftKey) {
+    event.preventDefault();
+    if (!el.matches('.is-editing, .is-leaving')) toggleSelected(el);
+    return;
+  }
+  // on a phone, while notes are selected, a tap adds or takes away one more
+  if (lastPointer !== 'mouse' && selected.size && !target.closest('.note-peel, .note-pin')) {
+    if (!el.matches('.is-editing, .is-leaving')) toggleSelected(el);
+    return;
+  }
+  // a plain click starts over with just this note
+  if (selected.size) clearSelection();
   const { id } = el.dataset;
   const swatch = target.closest('.note-swatch');
 
@@ -356,9 +391,9 @@ function pin(el) {
   setTimeout(() => el.classList.remove('is-pinning'), 300);
 }
 
-/** Ask for the one-note Focus view (focus.js listens for this). */
-function openFocus(id) {
-  document.dispatchEvent(new CustomEvent('stickly:focus', { detail: { id } }));
+/** Ask for the one-note Focus view (focus.js listens for this); `fullscreen` fills the screen too. */
+function openFocus(id, fullscreen = false) {
+  document.dispatchEvent(new CustomEvent('stickly:focus', { detail: { id, fullscreen } }));
 }
 
 /** Complete a note from outside the wall (used by the Focus view). */
@@ -366,17 +401,16 @@ export function completeNote(id) {
   return dismiss(id, 'done');
 }
 
-/** Send a wall note to the Later pile: it shrinks and arcs onto the pile. */
-async function sendToLater(id) {
+/** Put a wall note in the Later box: it folds small and drops in through the flaps. */
+async function sendToLater(id, quiet = false) {
   const el = noteElements.get(id);
-  const pile = document.getElementById('pile');
-  if (!el || el.classList.contains('is-leaving')) return;
+  if (!el || el.classList.contains('is-leaving')) return false;
   el.classList.add('is-leaving');
   if (el.contains(document.activeElement)) focusNeighbour(el);
-  // The pile is hidden while empty; show it first so there is somewhere to land.
-  pile.hidden = false;
-  await tossTo(el, pile);
-  if (moveToLater(id)) offerUndo(t('movedToLater'), 'later');
+  if (document.getElementById('pile').offsetParent !== null) await fileIntoBox(el);
+  const moved = moveToLater(id);
+  if (moved && !quiet) offerUndo(t('movedToLater'), 'later');
+  return moved;
 }
 
 /** Slide every note back into a neat grid (the usual glide does the moving). */
@@ -455,6 +489,8 @@ export const noteActions = {
   later: (id) => sendToLater(id),
   remove: (id) => dismiss(id, 'delete'),
   tomorrow: (id) => sendToTomorrow(id),
+  select: (id) => { const el = noteElements.get(id); if (el && !selected.has(id)) toggleSelected(el); },
+  takeOut: (id) => { const el = noteElements.get(id); if (el) takeOutOfPile([el]); },
 };
 
 /** Is Today or Tomorrow showing (so the wall is out of sight)? */
@@ -467,7 +503,7 @@ function onOtherView() {
  * Put a note aside for tomorrow: on the wall it shrinks and arcs up onto the
  * Tomorrow tab in the top bar; it comes back onto the wall tomorrow morning.
  */
-export async function sendToTomorrow(id) {
+export async function sendToTomorrow(id, quiet = false) {
   const el = noteElements.get(id);
   const tab = document.querySelector('#view-switch [data-view="tomorrow"]');
   if (el && !onOtherView() && !el.classList.contains('is-leaving') && tab) {
@@ -476,7 +512,9 @@ export async function sendToTomorrow(id) {
     await tossTo(el, tab);
     tab.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }], { duration: reducedMotion.matches ? 0 : 320, easing: 'ease-out' });
   }
-  if (moveToTomorrow(id)) offerUndo(t('movedToTomorrow'), 'later');
+  const moved = moveToTomorrow(id);
+  if (moved && !quiet) offerUndo(t('movedToTomorrow'), 'later');
+  return moved;
 }
 
 
@@ -485,14 +523,16 @@ export async function sendToTomorrow(id) {
  * kind 'done'   curls it up and lets it fly away (fromX continues a swipe);
  *      'delete' and 'trash' crumple it into a ball and throw it in the bin.
  */
-async function dismiss(id, kind, fromX = 0) {
+async function dismiss(id, kind, fromX = 0, quiet = false) {
   const el = noteElements.get(id);
+  const say = () => { if (!quiet) offerUndo(t(kind === 'done' ? 'done' : 'deleted'), kind === 'done' ? 'done' : 'trash'); };
   // Not on show (in Later, or Today / Tomorrow is up): no animation, just do it.
   if (!el || onOtherView()) {
-    if (removeNote(id, { done: kind === 'done' })) offerUndo(t(kind === 'done' ? 'done' : 'deleted'), kind === 'done' ? 'done' : 'trash');
-    return;
+    const gone = removeNote(id, { done: kind === 'done' });
+    if (gone) say();
+    return Boolean(gone);
   }
-  if (el.classList.contains('is-leaving')) return;
+  if (el.classList.contains('is-leaving')) return false;
 
   el.classList.add('is-leaving');
   if (el.contains(document.activeElement)) focusNeighbour(el);
@@ -500,7 +540,9 @@ async function dismiss(id, kind, fromX = 0) {
   const leave = { done: () => flyAway(el, fromX), delete: () => throwAway(el), trash: () => throwAway(el) };
   await leave[kind]();
 
-  if (removeNote(id, { done: kind === 'done' })) offerUndo(t(kind === 'done' ? 'done' : 'deleted'), kind === 'done' ? 'done' : 'trash');
+  const gone = removeNote(id, { done: kind === 'done' });
+  if (gone) say();
+  return Boolean(gone);
 }
 
 /** Give a note more or less time with + and −. Below 5 minutes it has no time. */
@@ -528,6 +570,9 @@ function focusNeighbour(el) {
 
 let taps = { el: null, count: 0, at: 0, x: 0, y: 0 };
 let editTimer = 0;
+let sheetTimer = 0;
+/** 'mouse', 'touch' or 'pen': what the last press on the wall was made with. */
+let lastPointer = 'mouse';
 
 function countTap(el, event) {
   const now = performance.now();
@@ -536,6 +581,16 @@ function countTap(el, event) {
   taps = { el, count: same ? taps.count + 1 : 1, at: now, x: event.clientX, y: event.clientY };
 
   clearTimeout(editTimer);
+  clearTimeout(sheetTimer);
+  // a finger's single tap: once it's clear no second tap is coming, the note's actions open
+  if (taps.count === 1 && lastPointer !== 'mouse') {
+    const { id } = el.dataset;
+    sheetTimer = setTimeout(() => {
+      if (el.isConnected && !el.matches('.is-editing, .is-leaving, .is-dragging')) {
+        document.dispatchEvent(new CustomEvent('stickly:note-sheet', { detail: { id } }));
+      }
+    }, TAP_GAP_MS);
+  }
   if (taps.count === 2) {
     editTimer = setTimeout(() => startEdit(el), EDIT_DELAY_MS);
   } else if (taps.count >= 3) {
@@ -644,12 +699,40 @@ function shortcutTarget(event) {
 
 function onNoteKey(event) {
   if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (selected.size && selectionKey(event)) return;
   const found = shortcutTarget(event);
-  if (!found) return;
-  const { el } = found;
-
-  const id = el.dataset.id;
   const key = event.key;
+  if (!found) {
+    // S with no note in mind: the whole app full screen (focus.js)
+    if (key.toLowerCase() === 's' && quietPage(event)) {
+      event.preventDefault();
+      document.dispatchEvent(new CustomEvent('stickly:fullscreen'));
+    }
+    return;
+  }
+  const { el } = found;
+  const id = el.dataset.id;
+
+  // A number typed on a note is its time in minutes: 2, 5 → 25 min.
+  if (/^[0-9]$/.test(key)) {
+    event.preventDefault();
+    typeMinutes(el, key);
+    return;
+  }
+  if (typed.id) {
+    if (key === 'Enter' || key === 'Escape') {
+      event.preventDefault();
+      endTyping(key === 'Enter');
+      return;
+    }
+    if (key === 'Backspace') {
+      event.preventDefault();
+      typed.digits = typed.digits.slice(0, -1);
+      if (typed.digits) typeMinutes(el, ''); else endTyping(false);
+      return;
+    }
+    endTyping(true);
+  }
 
   if (key.startsWith('Arrow')) {
     if (!found.focused && !event.shiftKey) return; // plain arrows scroll the page
@@ -665,6 +748,7 @@ function onNoteKey(event) {
     p: () => pin(el),
     c: () => cycleColor(el),
     f: () => openFocus(id),
+    s: () => openFocus(id, true),
     '+': () => nudgeMinutes(id, 1),
     '=': () => nudgeMinutes(id, 1),
     '-': () => nudgeMinutes(id, -1),
@@ -677,6 +761,61 @@ function onNoteKey(event) {
   if (!action) return;
   event.preventDefault();
   action();
+}
+
+/** Nothing has the keyboard: no typing, no dialog or panel open. */
+function quietPage(event) {
+  const target = event.target;
+  if (isTyping(target)) return false;
+  if (target !== document.body && target !== document.documentElement && !wall.contains(target)) return false;
+  return !document.querySelector('dialog[open], .sweep, [popover]:popover-open:not(#toast):not(#ball-preview)');
+}
+
+// Typing a time onto a note: the digits show in a little tag on the note as
+// they're typed, and are set a moment after the last one (or on Enter).
+// Esc lets it go; 0 takes the time off.
+const TYPE_PAUSE_MS = 900;
+const typed = { id: null, digits: '', timer: 0, tag: null };
+
+function typeMinutes(el, digit) {
+  const id = el.dataset.id;
+  if (typed.id && typed.id !== id) endTyping(true);
+  if (typed.id !== id) {
+    typed.id = id;
+    typed.digits = '';
+    typed.tag = document.createElement('span');
+    typed.tag.className = 'note-typed';
+    typed.tag.setAttribute('aria-live', 'polite');
+    el.append(typed.tag);
+  }
+  typed.digits = (typed.digits + digit).replace(/^0+(?=\d)/, '').slice(-3);
+  const minutes = Math.min(MINUTES_MAX, Number(typed.digits));
+  typed.tag.textContent = minutes ? formatMinutes(minutes) : t('noTime');
+  typed.tag.classList.remove('is-typing');
+  void typed.tag.offsetWidth;
+  typed.tag.classList.add('is-typing');
+  clearTimeout(typed.timer);
+  typed.timer = setTimeout(() => endTyping(true), TYPE_PAUSE_MS);
+}
+
+function endTyping(save) {
+  clearTimeout(typed.timer);
+  const { id, digits, tag } = typed;
+  typed.id = null;
+  typed.digits = '';
+  typed.tag = null;
+  if (tag) {
+    tag.classList.add('is-set');
+    setTimeout(() => tag.remove(), reducedMotion.matches ? 0 : 260);
+  }
+  if (!save || !id || !digits) return;
+  const minutes = Math.min(MINUTES_MAX, Number(digits));
+  setMinutes(id, minutes > 0 ? minutes : null);
+  const el = noteElements.get(id);
+  el?.querySelector('.note-time')?.animate(
+    [{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }],
+    { duration: reducedMotion.matches ? 0 : 320, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
+  );
 }
 
 const DIRECTIONS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -721,6 +860,8 @@ const PILE_STEP = { x: 4, y: 7 };
 const spreadLayer = document.getElementById('pile-spread');
 const spreadCount = document.getElementById('pile-spread-count');
 let spreadPile = null;
+/** How far an open pile's layout is moved to fit on screen; fixed while it's open. */
+let spreadShift = null;
 let stackHighlight = null;
 
 /** The pile a note is in, if it is closed up (an open pile's notes act on their own). */
@@ -757,31 +898,171 @@ function pileLayout(notes) {
   return layout;
 }
 
-/** An open pile: its notes in rows over the visible part of the wall, around where the pile is. */
-function spreadSpots(members) {
-  const size = noteSize();
-  const gap = window.innerWidth >= 720 ? 28 : 14;
+/** The part of the wall on screen, in wall coordinates, clear of the bar above and the capture bar below. */
+function visibleWall() {
   const box = wall.getBoundingClientRect();
-  // the part of the wall on screen, in wall coordinates, clear of the bar above and the capture bar below
-  const view = {
+  return {
     left: -box.left + 16,
     right: -box.left + window.innerWidth - 16,
     top: -box.top + 126,
     bottom: -box.top + window.innerHeight - 110,
   };
-  const columns = Math.max(1, Math.min(members.length, Math.floor((view.right - view.left + gap) / (size + gap))));
-  const rows = Math.ceil(members.length / columns);
-  const width = columns * size + (columns - 1) * gap;
-  const height = rows * size + (rows - 1) * gap;
+}
+
+/**
+ * An open pile: where each note shows. Notes arranged by hand keep their
+ * place (store: note.spread, measured from where the pile sits); the first
+ * time, they're laid out in rows around the pile. The whole layout shifts
+ * to fit on screen, by an amount fixed while the pile stays open, so a note
+ * put down lands exactly where it was let go.
+ */
+function spreadSpots(members) {
+  const size = noteSize();
+  const gap = window.innerWidth >= 720 ? 28 : 14;
+  const view = visibleWall();
+  const anchor = { x: members[0].x, y: members[0].y };
+  let offsets;
+  if (!members.some((n) => n.spread)) {
+    const columns = Math.max(1, Math.min(members.length, Math.floor((view.right - view.left + gap) / (size + gap))));
+    const rows = Math.ceil(members.length / columns);
+    const width = columns * size + (columns - 1) * gap;
+    const height = rows * size + (rows - 1) * gap;
+    const x0 = Math.max(view.left, Math.min(anchor.x + size / 2 - width / 2, view.right - width));
+    const y0 = Math.max(view.top, Math.min(anchor.y + size / 2 - height / 2, view.bottom - height));
+    offsets = members.map((n, i) => {
+      const row = Math.floor(i / columns);
+      const inRow = Math.min(columns, members.length - row * columns);
+      const shift = ((columns - inRow) * (size + gap)) / 2; // a short last row sits in the middle
+      return { x: x0 + shift + (i % columns) * (size + gap) - anchor.x, y: y0 + row * (size + gap) - anchor.y };
+    });
+    spreadShift ??= { x: 0, y: 0 };
+  } else {
+    // arranged by hand; a note new to the pile takes the first free place next to the others
+    offsets = members.map((n) => (n.spread ? { x: n.spread.x, y: n.spread.y } : null));
+    const taken = offsets.filter(Boolean);
+    const left = Math.min(...taken.map((o) => o.x));
+    const top = Math.min(...taken.map((o) => o.y));
+    const columns = Math.max(1, Math.floor((view.right - view.left + gap) / (size + gap)));
+    offsets = offsets.map((o) => {
+      if (o) return o;
+      for (let cell = 0; cell < 400; cell++) {
+        const spot = { x: left + (cell % columns) * (size + gap), y: top + Math.floor(cell / columns) * (size + gap) };
+        if (taken.every((t) => Math.abs(t.x - spot.x) >= size * 0.9 || Math.abs(t.y - spot.y) >= size * 0.9)) {
+          taken.push(spot);
+          return spot;
+        }
+      }
+      return { x: left, y: top };
+    });
+    spreadShift ??= fitShift(offsets.map((o) => ({ x: anchor.x + o.x, y: anchor.y + o.y })), size, view);
+  }
+  return members.map((n, i) => ({
+    x: anchor.x + offsets[i].x + spreadShift.x,
+    y: anchor.y + offsets[i].y + spreadShift.y,
+    z: 9600 + (n.spread?.z > 0 ? n.spread.z : members.length - i),
+  }));
+}
+
+/** How far to move a group of notes so it's on screen (top-left first if it can't all fit). */
+function fitShift(spots, size, view) {
+  const left = Math.min(...spots.map((p) => p.x));
+  const right = Math.max(...spots.map((p) => p.x)) + size;
+  const top = Math.min(...spots.map((p) => p.y));
+  const bottom = Math.max(...spots.map((p) => p.y)) + size;
+  let x = right > view.right ? view.right - right : 0;
+  if (left + x < view.left) x = view.left - left;
+  let y = bottom > view.bottom ? view.bottom - bottom : 0;
+  if (top + y < view.top) y = view.top - top;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+/** Is this note in the pile that's open right now? */
+function inOpenPile(el) {
+  if (!spreadPile) return false;
+  return getState().notes.find((n) => n.id === el.dataset.id)?.pile === spreadPile;
+}
+
+/** Is this note (by id) in the pile that's open right now? For the menu. */
+export function isInOpenPile(id) {
+  const el = noteElements.get(id);
+  return Boolean(el && inOpenPile(el));
+}
+
+/**
+ * Notes of the open pile put down somewhere new: every note keeps where it
+ * shows now, and the moved ones come to the front of the pile's layout.
+ */
+function arrangeSpread(moved) {
+  const pile = spreadPile;
+  const members = pileMembers(pile);
+  if (!members.length) return;
   const anchor = members[0];
-  const x0 = Math.max(view.left, Math.min(anchor.x + size / 2 - width / 2, view.right - width));
-  const y0 = Math.max(view.top, Math.min(anchor.y + size / 2 - height / 2, view.bottom - height));
-  return members.map((n, i) => {
-    const row = Math.floor(i / columns);
-    const inRow = Math.min(columns, members.length - row * columns);
-    const shift = ((columns - inRow) * (size + gap)) / 2; // a short last row sits in the middle
-    return { x: x0 + shift + (i % columns) * (size + gap), y: y0 + row * (size + gap), z: 9600 + members.length - i };
+  const movedIds = new Set(moved.map((el) => el.dataset.id));
+  const order = members
+    .map((n) => ({ n, el: noteElements.get(n.id) }))
+    .filter((m) => m.el)
+    .sort((a, b) => (movedIds.has(a.n.id) - movedIds.has(b.n.id)) || (Number(a.el.style.zIndex) - Number(b.el.style.zIndex)));
+  const spots = {};
+  order.forEach(({ n, el }, i) => {
+    spots[n.id] = { x: el.offsetLeft - anchor.x - spreadShift.x, y: el.offsetTop - anchor.y - spreadShift.y, z: i + 1 };
   });
+  arrangePile(pile, spots);
+}
+
+/** Take notes off the open pile: each gets a free spot on the wall of its own. One Undo. */
+function takeOutOfPile(els) {
+  const ids = els.map((el) => el.dataset.id);
+  for (const el of els) { el.style.transform = ''; el.style.transformOrigin = ''; el.classList.remove('is-dragging'); }
+  beginBatch();
+  let count = 0;
+  try { for (const id of ids) if (takeOffPile(id)) count++; } finally { endBatch(); }
+  selected.clear();
+  showSelection();
+  if (count) { riffle(1); offerUndo(t(count > 1 ? 'takenOffMany' : 'takenOff', { n: count }), 'undo'); }
+}
+
+/**
+ * Places on the page a carried note can be dropped on, besides the trash and
+ * the box: the Tomorrow tab (it zooms in to take the note, which then flies
+ * onto it) and, while a pile is open, its bar (to take the note out).
+ */
+const tomorrowTab = document.querySelector('#view-switch [data-view="tomorrow"]');
+const pileBar = document.querySelector('.pile-bar');
+const TAB_REACH = 14;
+
+function dropTargets() {
+  const list = [];
+  if (spreadPile) {
+    list.push({
+      key: 'pile-bar',
+      shrink: 0.4,
+      hit: (x, y) => near(pileBar, x, y, pileBar.classList.contains('is-drop-target') ? 34 : 12),
+      hover: (on) => { pileBar.classList.toggle('is-drop-target', on); if (on) pick(); },
+      drop: (el) => takeOutOfPile(carryingSelection(el) ? selectedElements() : [el]),
+    });
+  }
+  if (tomorrowTab && !onOtherView()) {
+    list.push({
+      key: 'tomorrow',
+      shrink: 0.3,
+      hit: (x, y) => near(tomorrowTab, x, y, TAB_REACH),
+      hover: (on) => { tomorrowTab.classList.toggle('is-drop-target', on); if (on) pick(); },
+      drop: (el) => {
+        if (carryingSelection(el)) { actOnSelection('tomorrow'); return; }
+        const pile = pileOf(el);
+        const ids = pile ? pileMembers(pile).map((n) => n.id).reverse() : [el.dataset.id];
+        if (ids.length === 1) { sendToTomorrow(ids[0]); return; }
+        Promise.all(ids.map((id, i) => new Promise((resolve) => setTimeout(resolve, reducedMotion.matches ? 0 : i * 110)).then(() => sendToTomorrow(id, true))))
+          .then((moved) => { const n = moved.filter(Boolean).length; if (n) offerUndo(t('tomorrowMany', { n }), 'later'); });
+      },
+    });
+  }
+  return list;
+}
+
+function near(target, x, y, reach) {
+  const r = target.getBoundingClientRect();
+  return r.width > 0 && x > r.left - reach && x < r.right + reach && y > r.top - reach && y < r.bottom + reach;
 }
 
 function initSpread() {
@@ -806,7 +1087,9 @@ function openSpread(pileId) {
   if (spreadPile === pileId) return;
   const count = pileMembers(pileId).length;
   if (count < 2) return;
+  clearSelection();
   spreadPile = pileId;
+  spreadShift = null;
   spreadCount.textContent = t('pileCount', { n: count });
   spreadLayer.hidden = false;
   spreadLayer.classList.remove('is-closing');
@@ -822,6 +1105,8 @@ function closeSpread(rerender = true) {
   if (!spreadPile) return;
   const pile = spreadPile;
   spreadPile = null;
+  spreadShift = null;
+  clearSelection();
   spreadLayer.classList.add('is-closing');
   setTimeout(() => { if (!spreadPile) spreadLayer.hidden = true; }, reducedMotion.matches ? 0 : 220);
   if (!rerender) return;
@@ -833,6 +1118,7 @@ function closeSpread(rerender = true) {
 
 /** A closed pile is picked up whole; anything else on its own. */
 function carriedWith(el) {
+  if (carryingSelection(el)) return selectedElements();
   const pile = pileOf(el);
   if (!pile) return [el];
   return pileMembers(pile).map((n) => noteElements.get(n.id)).filter(Boolean);
@@ -877,8 +1163,11 @@ function settlePile(target) {
 }
 
 /** Put a dragged note down; a whole pile moves as one, keeping its shape. */
-function dropNote(el, x, y) {
+function dropNote(el, x, y, dx = 0, dy = 0) {
   slap();
+  // in an open pile, notes are arranged freely and stay in the pile
+  if (inOpenPile(el)) { arrangeSpread(carryingSelection(el) ? selectedElements() : [el]); return; }
+  if (carryingSelection(el)) { moveSelection(el, x, y, dx, dy); return; }
   const pile = pileOf(el);
   if (pile) movePile(pile, x - Number(el.dataset.pileDx || 0), y - Number(el.dataset.pileDy || 0));
   else placeNote(el.dataset.id, x, y);
@@ -893,4 +1182,255 @@ async function throwPile(pileId) {
   await Promise.all(els.map((el, i) => new Promise((resolve) => setTimeout(resolve, reducedMotion.matches ? 0 : i * 140)).then(() => throwAway(el))));
   const count = removeNotes(members.map((n) => n.id));
   if (count) offerUndo(t('deletedMany', { n: count }), 'trash');
+}
+
+// 7. Selecting several notes ------------------------------------------------
+// ⌘-click (Ctrl-click on Windows, or Shift-click) picks notes out one by one;
+// ⌘A takes every note on the wall. The picked notes lift a little and get a
+// check mark, and a glass bar above the capture bar offers what to do with
+// all of them at once: a color, Done, Later, Tomorrow, Stack, Delete. The
+// usual keys (D, L, M, C, Backspace) work on the whole selection too, and
+// dragging one of them carries them all, to the wall, the trash, the box or
+// onto another note. Whatever is done to them is one step for Undo.
+// A closed pile is picked as a whole. Escape or a plain click lets go.
+
+const selected = new Set();
+const selectBar = document.getElementById('select-bar');
+const selectCount = document.getElementById('select-count');
+let selectActing = false;
+
+function initSelection() {
+  selectBar.addEventListener('click', (event) => {
+    const swatch = event.target.closest('.select-swatch');
+    if (swatch) { colorSelection(swatch.dataset.color); return; }
+    const button = event.target.closest('[data-act]');
+    if (!button) return;
+    if (button.dataset.act === 'clear') clearSelection();
+    else if (button.dataset.act === 'stack') stackSelection();
+    else actOnSelection(button.dataset.act);
+  });
+  // ⌘A: every note on the wall (when nothing is being typed)
+  document.addEventListener('keydown', (event) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'a') return;
+    if (onOtherView() || !quietPage(event) || !getState().notes.length) return;
+    event.preventDefault();
+    for (const note of getState().notes) selected.add(note.id);
+    pick();
+    showSelection();
+  });
+  // a click on the empty wall (or anywhere outside the notes and the bar) lets go
+  document.addEventListener('pointerdown', (event) => {
+    if (!selected.size || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('.note, #select-bar, #toast, [popover], dialog, .drop-zone')) return;
+    clearSelection();
+  });
+}
+
+/** The ids of everything that goes with a note when it's picked: its whole pile if closed. */
+function unitOf(el) {
+  const pile = pileOf(el);
+  return pile ? pileMembers(pile).map((n) => n.id) : [el.dataset.id];
+}
+
+function toggleSelected(el) {
+  const ids = unitOf(el);
+  const adding = !ids.every((id) => selected.has(id));
+  for (const id of ids) {
+    if (adding) selected.add(id);
+    else selected.delete(id);
+  }
+  if (adding) {
+    pick();
+    if (!reducedMotion.matches) {
+      el.querySelector('.note-paper')?.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(0.96)', offset: 0.35 }, { transform: 'scale(1)' }],
+        { duration: 220, easing: 'ease-out' },
+      );
+    }
+  }
+  showSelection();
+}
+
+export function clearSelection() {
+  if (!selected.size) return;
+  selected.clear();
+  showSelection();
+}
+
+/** Bring the notes and the bar in line with what's selected (and forget notes that have left the wall). */
+function showSelection() {
+  const onWall = new Set(getState().notes.map((n) => n.id));
+  for (const id of [...selected]) if (!onWall.has(id)) selected.delete(id);
+  if (onOtherView()) selected.clear();
+  for (const [id, el] of noteElements) el.classList.toggle('is-selected', selected.has(id));
+  const count = selected.size;
+  document.body.classList.toggle('has-selection', count > 0);
+  if (count === 0) {
+    if (!selectBar.hidden && !selectBar.classList.contains('is-closing')) {
+      selectBar.classList.add('is-closing');
+      setTimeout(() => {
+        selectBar.classList.remove('is-closing');
+        if (!selected.size) selectBar.hidden = true;
+      }, reducedMotion.matches ? 0 : 180);
+    }
+    return;
+  }
+  selectBar.classList.remove('is-closing');
+  selectBar.hidden = false;
+  selectCount.textContent = t('selCount', { n: count });
+  selectCount.dataset.n = String(count); // a narrow phone shows just the number
+  const colors = new Set(getState().notes.filter((n) => selected.has(n.id)).map((n) => n.color));
+  for (const swatch of selectBar.querySelectorAll('.select-swatch')) {
+    const { color } = swatch.dataset;
+    swatch.setAttribute('aria-label', t('selAllColor', { name: t(`color_${color}`) }));
+    swatch.title = swatch.getAttribute('aria-label');
+    swatch.setAttribute('aria-pressed', String(colors.size === 1 && colors.has(color)));
+  }
+  const keys = { done: 'D', later: 'L', tomorrow: 'M', delete: '⌫' };
+  for (const button of selectBar.querySelectorAll('.select-action')) {
+    const label = button.querySelector('span').textContent;
+    const key = keys[button.dataset.act];
+    button.title = key ? `${label} (${key})` : label;
+    button.setAttribute('aria-label', label);
+  }
+  const close = selectBar.querySelector('.select-close');
+  close.title = `${t('selClear')} (Esc)`;
+  close.setAttribute('aria-label', t('selClear'));
+}
+
+/** Is this note part of a selection of more than itself (so a drag takes them all)? */
+function carryingSelection(el) {
+  if (!selected.has(el.dataset.id)) return false;
+  return [...selected].some((id) => !unitOf(el).includes(id));
+}
+
+/** The selected notes' elements, the held one's pile mates included. */
+function selectedElements() {
+  return [...selected].map((id) => noteElements.get(id)).filter(Boolean);
+}
+
+/** The selected notes in a sensible order: top-left first. */
+function selectedIds() {
+  return getState().notes
+    .filter((n) => selected.has(n.id))
+    .sort((a, b) => (a.y - b.y) || (a.x - b.x))
+    .map((n) => n.id);
+}
+
+/** Keys while several notes are selected. True if the key was used. */
+function selectionKey(event) {
+  if (onOtherView() || !(quietPage(event) || isNote(event.target))) return false;
+  const actions = {
+    escape: () => clearSelection(),
+    d: () => actOnSelection('done'),
+    l: () => actOnSelection('later'),
+    m: () => actOnSelection('tomorrow'),
+    c: () => cycleSelectionColor(),
+    backspace: () => actOnSelection('delete'),
+    delete: () => actOnSelection('delete'),
+  };
+  const action = actions[event.key.toLowerCase()];
+  if (!action) return false;
+  event.preventDefault();
+  action();
+  return true;
+}
+
+/**
+ * Do the same to every selected note: each goes its usual way (curling off,
+ * crumpling into the trash, into the box, up to Tomorrow), one just after
+ * the other. One message, one Undo.
+ */
+async function actOnSelection(kind) {
+  if (selectActing) return;
+  const ids = selectedIds();
+  if (!ids.length) return;
+  selectActing = true;
+  selected.clear();
+  showSelection();
+  const stagger = reducedMotion.matches ? 0 : { done: 90, delete: 140, later: 120, tomorrow: 110 }[kind];
+  const one = {
+    done: (id) => dismiss(id, 'done', 0, true),
+    delete: (id) => dismiss(id, 'delete', 0, true),
+    later: (id) => sendToLater(id, true),
+    tomorrow: (id) => sendToTomorrow(id, true),
+  }[kind];
+  beginBatch();
+  let count = 0;
+  try {
+    const results = await Promise.all(ids.map((id, i) => new Promise((resolve) => setTimeout(resolve, i * stagger)).then(() => one(id))));
+    count = results.filter(Boolean).length;
+  } finally {
+    endBatch();
+    selectActing = false;
+  }
+  if (!count) return;
+  const single = { done: 'done', delete: 'deleted', later: 'movedToLater', tomorrow: 'movedToTomorrow' }[kind];
+  const many = { done: 'doneMany', delete: 'deletedMany', later: 'laterMany', tomorrow: 'tomorrowMany' }[kind];
+  const icon = { done: 'done', delete: 'trash', later: 'later', tomorrow: 'later' }[kind];
+  offerUndo(count === 1 ? t(single) : t(many, { n: count }), icon);
+}
+
+/** All the selected notes in one color (they stay selected, to do more). */
+function colorSelection(color) {
+  const ids = selectedIds();
+  if (!ids.length) return;
+  beginBatch();
+  try { for (const id of ids) setColor(id, color); } finally { endBatch(); }
+  pick();
+}
+
+/** C on a selection: the next color for all of them, starting from the first one's. */
+function cycleSelectionColor() {
+  const first = getState().notes.find((n) => n.id === selectedIds()[0]);
+  if (!first) return;
+  colorSelection(COLORS[(COLORS.indexOf(first.color) + 1) % COLORS.length]);
+}
+
+/**
+ * Stack the selection into one pile: onto `target` when they were dragged
+ * onto a note, otherwise onto the top-left one of them.
+ */
+function stackSelection(target = null) {
+  const ids = selectedIds();
+  const ontoId = target ? target.dataset.id : ids[0];
+  const rest = ids.filter((id) => id !== ontoId && !(target && unitOf(target).includes(id)));
+  if (!ontoId || !rest.length) { clearSelection(); return; }
+  beginBatch();
+  let stacked = 0;
+  try {
+    for (const id of rest) if (stackNotes(id, ontoId)) stacked++;
+  } finally { endBatch(); }
+  selected.clear();
+  showSelection();
+  if (!stacked) return;
+  riffle(Math.min(4, stacked + 1));
+  const onto = noteElements.get(ontoId);
+  if (onto) settlePile(onto);
+  offerUndo(t('stackedMany', { n: pileMembers(getState().notes.find((n) => n.id === ontoId)?.pile).length || stacked + 1 }), 'undo');
+}
+
+/** The selection dragged somewhere on the wall: all of it moves by the same amount. One Undo. */
+function moveSelection(el, x, y, dx, dy) {
+  const notes = getState().notes;
+  // every one of them moved exactly as far as the pointer did
+  const shiftX = dx;
+  const shiftY = dy;
+  const piles = new Set();
+  const moves = [];
+  for (const n of notes) {
+    if (!selected.has(n.id)) continue;
+    if (n.pile && pileOf(noteElements.get(n.id) || el)) {
+      if (piles.has(n.pile)) continue;
+      piles.add(n.pile);
+      moves.push(() => movePile(n.pile, n.x + shiftX, n.y + shiftY));
+    } else {
+      moves.push(() => placeNote(n.id, n.x + shiftX, n.y + shiftY));
+    }
+  }
+  beginBatch();
+  try { for (const move of moves) move(); } finally { endBatch(); }
+  // they stay selected, ready for the next thing
 }

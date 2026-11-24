@@ -854,7 +854,7 @@ body {
   /* Phones: the chips scroll; the fine-tune and Plan's word make room, and
      the trash and Later step aside so the bar gets the whole width. */
   .capture:has(.capture-field[data-step="time"]) .trash,
-  .capture:has(.capture-field[data-step="time"]) .pile { display: none; }
+  .capture:has(.capture-field[data-step="time"]) .box { display: none; }
   .time-top { flex-wrap: wrap; row-gap: 0; }
   .time-tune { display: none; }
   .step-time { padding-left: 14px; }
@@ -1094,56 +1094,107 @@ body:has(.capture-field[data-step="time"]) .toast { margin-bottom: 48px; }
   to   { transform: scaleX(0); }
 }
 
-/* Later pile: three small notes stacked; only the count is shown. */
-.pile {
+/* The Later box: a small cardboard box in the bottom-right corner, the
+   trash can's counterpart. It grows and lifts its flaps when a note is on
+   its way or being carried, swallows it through the open flaps, and shows
+   how many are inside on a stamp on its front (later.js). */
+.box {
+  --big: 1.35;
+  --bigger: 1.6;
   pointer-events: auto;
   position: relative;
+  z-index: 4;
   flex: none;
-  width: 44px;
-  height: 44px;
-  margin: 0 4px;
+  align-self: center;
+  width: 50px;
+  height: 48px;
+  margin: 0 2px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
-  /* the button itself is the bottom sheet */
-  background: color-mix(in srgb, var(--note) 82%, #000);
-  color: var(--note-text);
-  font: 600 14px/1 var(--font-ui);
-  transform: rotate(-5deg);
+  background: none;
   cursor: pointer;
+  transform-origin: 100% 100%; /* it grows up and in from its corner, so the open flaps stay on screen */
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-
-/* middle and top sheets; the count is drawn above both */
-.pile::before,
-.pile::after {
-  content: "";
+.box svg { display: block; overflow: visible; }
+.box-shadow { fill: rgba(0, 0, 0, 0.2); }
+.box-body { transform-box: fill-box; transform-origin: 50% 100%; }
+.box-flap {
+  transform-box: fill-box;
+  transition: transform 300ms cubic-bezier(0.34, 1.5, 0.64, 1);
+}
+.box-flap-left { transform-origin: 0% 100%; }   /* hinged on the left wall */
+.box-flap-right { transform-origin: 100% 100%; } /* hinged on the right wall */
+.box-flap-back { transform-origin: 50% 100%; transform: scaleY(0); }
+.box-inside { opacity: 0; transition: opacity 120ms ease; }
+.box-count {
   position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: 6px;
+  left: 50%;
+  bottom: 9px;
+  translate: -50% 0;
+  min-width: 18px;
+  padding: 2px 4px 1px;
+  border-radius: 3px;
+  background: #F4E6C8;
+  color: #6B4A22;
+  font: 700 10.5px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(107, 74, 34, 0.25);
+  pointer-events: none;
+  transition: scale 200ms ease;
 }
-.pile::before {
-  background: color-mix(in srgb, var(--note) 91%, #000);
-  transform: rotate(9deg);
-}
-.pile::after {
-  background: var(--note);
-  transform: rotate(4deg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-}
+.box-count:empty { display: none; }
 
-.pile.is-bumped { animation: pile-bump 320ms ease; }
+@media (hover: hover) {
+  .box:hover { transform: scale(1.25); }
+  .box:hover .box-flap-left { transform: rotate(-20deg); }
+  .box:hover .box-flap-right { transform: rotate(20deg); }
+  .box:hover .box-inside { opacity: 1; }
+}
+.box:focus-visible { outline-offset: 3px; border-radius: 6px; }
 
-@keyframes pile-bump {
-  40% { transform: rotate(-5deg) translateY(-6px); }
+/* A note is being carried: the box grows a little and opens a crack. */
+.box.is-awake { transform: scale(var(--big)); }
+.box.is-awake .box-flap-left { transform: rotate(-28deg); }
+.box.is-awake .box-flap-right { transform: rotate(28deg); }
+.box.is-awake .box-inside { opacity: 1; }
+
+/* Something is coming, or right above it, or it's being looked into: flaps
+   swung right open, the back one standing up. */
+.box.is-open,
+.box.is-looking { transform: scale(var(--bigger)); }
+.box.is-looking { transform: scale(1.3); }
+.box.is-open .box-flap-left,
+.box.is-looking .box-flap-left { transform: rotate(-128deg); }
+.box.is-open .box-flap-right,
+.box.is-looking .box-flap-right { transform: rotate(128deg); }
+.box.is-open .box-flap-back,
+.box.is-looking .box-flap-back { transform: scaleY(1); }
+.box.is-open .box-inside,
+.box.is-looking .box-inside { opacity: 1; transition-duration: 60ms; }
+
+/* Closing: the flaps fold back down, one just after the other, and the box
+   settles with a soft cardboard bump. */
+.box.is-closing .box-flap-left { transition: transform 260ms cubic-bezier(0.5, 0, 0.75, 0.4); }
+.box.is-closing .box-flap-right { transition: transform 260ms cubic-bezier(0.5, 0, 0.75, 0.4) 70ms; }
+.box.is-closing .box-flap-back { transition: transform 180ms ease-in; }
+.box.is-closing .box-inside { transition: opacity 120ms ease 220ms; }
+.box.is-bumped .box-body { animation: box-bump 420ms ease-out; }
+.box.is-bumped .box-count { scale: 1.2; }
+@keyframes box-bump {
+  0% { transform: none; }
+  30% { transform: scale(1.05, 0.93); }
+  62% { transform: scale(0.98, 1.03); }
+  100% { transform: none; }
 }
 
 @media (min-width: 720px) {
-  /* On wide screens the pile rests in the bottom-right corner. */
-  .pile {
+  /* On wide screens the box rests in the bottom-right corner, across from the trash. */
+  .box {
     position: absolute;
-    right: 24px;
-    bottom: calc(23px + env(safe-area-inset-bottom));
+    right: 34px; /* room for the right flap when it swings open */
+    bottom: calc(26px + env(safe-area-inset-bottom));
     margin: 0;
   }
 }
@@ -1266,78 +1317,226 @@ body:has(.capture-field[data-step="time"]) .toast { margin-bottom: 48px; }
   font-variant-numeric: tabular-nums;
 }
 
-/* Later panel: opens above the pile. */
-.later {
-  right: 16px;
-  bottom: calc(var(--keyboard) + var(--bar-height) + 36px + env(safe-area-inset-bottom));
-  width: min(340px, calc(100vw - 32px));
-  max-height: min(60vh, 440px);
-  overflow-y: auto;
+/* Inside the Later box: the same glass pane as the trash's, rising out of
+   the box on the right. The notes sit in the box as small stickies. */
+.box-peek {
+  position: fixed;
+  inset: auto 0 0 auto;
+  margin: 0;
+  width: min(372px, calc(100vw - 24px));
+  padding: 14px 14px 10px;
+  border: 0;
+  border-radius: 20px;
+  color: var(--text);
+  overflow: visible;
+  transform-origin: calc(100% - 30px) 100%;
 }
-
-.later-list {
+.box-peek:popover-open { animation: peek-in 300ms cubic-bezier(0.34, 1.4, 0.64, 1); }
+.box-well {
+  max-height: min(52vh, 380px);
+  min-height: 92px;
+  margin: 10px 0 8px;
+  padding: 12px 10px;
+  overflow-y: auto;
+  border-radius: 14px;
+  /* the same shallow, smoky well as the trash's */
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 7%, transparent), color-mix(in srgb, var(--text) 3%, transparent));
+  box-shadow:
+    inset 0 2px 7px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px color-mix(in srgb, var(--text) 6%, transparent);
+  display: grid;
+  align-items: center;
+}
+.box-notes {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 2px;
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 12px 11px;
 }
+.box-notes:empty { display: none; }
 
-/* Each waiting note is a slim strip of the same yellow paper. */
-.later-item {
+/* One waiting note: a small square sticky with its own tilt. */
+.box-note {
+  --paper: var(--paper-yellow);
+  --radius: 8px;
+  --fold: 16px;
+  position: relative;
+  aspect-ratio: 1;
+  rotate: var(--tilt, 0deg);
+  /* the shadow follows the paper's outline, curl included, as on the wall */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)) drop-shadow(0 5px 9px var(--note-ambient));
+  transition: rotate 220ms var(--spring-settle, ease), translate 220ms var(--spring-settle, ease), opacity 160ms ease, filter 200ms ease;
+  touch-action: none;
+}
+.box-note[data-color="pink"]  { --paper: var(--paper-pink); }
+.box-note[data-color="blue"]  { --paper: var(--paper-blue); }
+.box-note[data-color="green"] { --paper: var(--paper-green); }
+/* The same paper as on the wall: rounded, lit from the top-left, with a
+   curled bottom-right corner. */
+.box-note-paper {
+  position: absolute;
+  inset: 0;
   display: flex;
-  align-items: stretch;
-  border-radius: 5px;
-  background: var(--paper, var(--note));
+  flex-direction: column;
+  padding: 11px 10px 6px;
+  border-radius: var(--radius);
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 32%,
+                            rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.1) 100%),
+    var(--paper);
+  box-shadow: inset 0 1px 0 var(--note-edge), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
   color: var(--note-text);
+  overflow: hidden;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--fold)), calc(100% - var(--fold)) 100%, 0 100%);
+  cursor: grab;
+  outline: none;
 }
-
-.later-promote,
-.later-remove {
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+.box-note-paper::after {
+  /* the curl */
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--fold);
+  height: var(--fold);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--paper) 70%, #fff) 45%, color-mix(in srgb, var(--paper) 75%, #000) 100%);
+  border-top-left-radius: 5px;
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
 }
-
-.later-promote {
-  flex: 1;
-  min-width: 0;
+.box-note:hover { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)) drop-shadow(0 10px 12px var(--note-ambient)); }
+.box-note:hover,
+.box-note:focus-within { rotate: 0deg; translate: 0 -2px; z-index: 1; }
+.box-note.is-lifted { opacity: 0.25; }
+.box-note:has(.box-note-paper:focus-visible) { outline: 2px solid var(--text); outline-offset: 3px; border-radius: var(--radius); }
+.box-note-time {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 6px 10px 12px;
-  text-align: left;
+  gap: 4px;
+  margin: 0 0 4px;
+  color: rgba(26, 26, 26, 0.62);
+  font: 600 10.5px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
 }
-
-.later-text {
+.box-note-time:empty { display: none; }
+.box-note-text {
   flex: 1;
-  min-width: 0;
-  font-family: var(--font-note);
-  font-size: 15px;
-  line-height: 1.3;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  font: 13.5px/1.25 var(--font-note);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+  -webkit-line-clamp: 4;
 }
-
-.later-promote svg { flex: none; opacity: 0.55; }
-.later-promote:hover svg { opacity: 1; }
-.later-promote:disabled { cursor: default; }
-.later-promote:disabled svg { visibility: hidden; }
-
-.later-remove {
-  flex: none;
-  width: 36px;
+.box-note.is-editing .box-note-text {
+  display: block;
+  overflow-y: auto;
+  outline: none;
+  cursor: text;
+  -webkit-line-clamp: none;
+}
+.box-note.is-editing .box-note-paper { cursor: auto; }
+.box-note.is-editing { outline: 2px solid var(--text); outline-offset: 3px; border-radius: var(--radius); }
+/* The tools, shown on hover or focus: the four colors in a row of their
+   own along the bottom (never squeezed), and "to the wall" and delete in
+   the top-right corner. */
+.box-note-tools {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 0 2px -1px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.box-note-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--paper) 88%, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.box-note:hover :is(.box-note-tools, .box-note-actions),
+.box-note:focus-within :is(.box-note-tools, .box-note-actions) { opacity: 1; }
+@media (hover: none) { :is(.box-note-tools, .box-note-actions) { opacity: 1; } }
+.box-swatch {
+  position: relative;
+  flex: none; /* a circle, whatever the room */
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+  transition: transform 140ms ease;
+}
+.box-swatch::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; } /* an easier target */
+.box-swatch:hover { transform: scale(1.18); }
+.box-swatch[aria-pressed="true"] { box-shadow: 0 0 0 1.5px var(--paper), 0 0 0 2.5px var(--note-text); }
+.box-tool {
   display: grid;
   place-items: center;
-  opacity: 0.55;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--note-text);
+  opacity: 0.7;
+  cursor: pointer;
 }
-.later-remove:hover { opacity: 1; }
+.box-tool:hover { opacity: 1; background: rgba(0, 0, 0, 0.08); }
+.box-tool:disabled { display: none; }
+.box-note .note-typed { top: -9px; right: -6px; }
+/* a note being dragged out of the box */
+.box-note.is-ghost {
+  position: fixed;
+  z-index: 9000;
+  width: 98px;
+  translate: -50% -50%;
+  pointer-events: none;
+  transition: scale 160ms ease, rotate 160ms ease;
+}
+.box-note.is-ghost.is-out { scale: 1.6; rotate: -3deg; }
+.box-note.is-ghost :is(.box-note-tools, .box-note-actions) { display: none; }
+.box-peek .bin-empty[hidden] { display: none; }
+#later-all[hidden] { display: none; }
 
-.later-item :focus-visible { outline-color: var(--note-text); outline-offset: -3px; }
+/* A time being typed onto a note: a small dark tag over its corner. */
+.note-typed {
+  position: absolute;
+  top: -12px;
+  right: -8px;
+  z-index: 5;
+  padding: 6px 10px 5px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font: 600 13px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  animation: typed-in 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.note-typed.is-typing { animation: typed-tap 200ms ease-out; }
+.note-typed.is-set { opacity: 0; translate: 0 -6px; transition: opacity 220ms ease, translate 240ms ease; }
+@keyframes typed-in { from { opacity: 0; scale: 0.6; } }
+@keyframes typed-tap { 40% { scale: 1.1; } }
 
 /* The good-morning card: the date, a greeting, and (when needed) one
    question about yesterday. */
@@ -1811,6 +2010,24 @@ body:has(.capture-field[data-step="time"]) .toast { margin-bottom: 48px; }
 .drop-zone-label span { writing-mode: vertical-rl; transform: rotate(180deg); }
 .drop-zone-label svg { opacity: 0.8; }
 .drop-zone.is-awake { opacity: 1; translate: 0 0; }
+/* The right edge is its mirror: the Later side. Frost from the right, and
+   a warm cardboard tint when a note is over it. */
+.drop-zone-later {
+  left: auto;
+  right: 0;
+  justify-items: end;
+  padding-left: 0;
+  padding-right: calc(var(--zone, 190px) * 0.28);
+  -webkit-mask-image: linear-gradient(270deg, #000 0%, #000 62%, transparent 100%);
+          mask-image: linear-gradient(270deg, #000 0%, #000 62%, transparent 100%);
+  translate: 40px 0;
+}
+.drop-zone-later .drop-zone-label span { transform: none; }
+.drop-zone-later.is-hot {
+  background-color: color-mix(in srgb, var(--bg) 20%, color-mix(in srgb, #B98D52 12%, transparent));
+}
+/* A note carried to the right edge must not widen the page. */
+html:has(body.is-carrying) { overflow-x: clip; }
 /* While carrying, the trash can and the bar stay clear of the frost. */
 body.is-carrying .capture { z-index: 8995; }
 .drop-zone.is-hot {
@@ -2708,4 +2925,522 @@ body[data-view="tomorrow"] .wall-area > :not(#tomorrow-view) { display: none !im
 /* Phones have no N key to press: the hint makes room for the placeholder. */
 @media (max-width: 520px), (hover: none) {
   .capture-key { display: none !important; }
+}
+
+/* Settings → Sync: a status line and one button. */
+.settings-sync { display: grid; gap: 10px; }
+.sync-status { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.4; }
+.sync-status[data-state="synced"] { color: var(--text); }
+.sync-status[data-state="error"] { color: #B4432F; }
+.sync-signin {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--field-border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13.5px/1 var(--font-ui);
+  cursor: pointer;
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+.sync-signin:hover { background: color-mix(in srgb, var(--text) 6%, var(--surface)); }
+.sync-signin:active { transform: scale(0.98); }
+.sync-signin[hidden], .settings-sync .settings-link[hidden] { display: none; }
+.settings-sync .settings-link { justify-self: start; }
+/* Google and email: two pills of one size, one under the other. */
+.sync-buttons { justify-self: start; display: inline-grid; gap: 8px; }
+.sync-buttons:not(:has(> :not([hidden]))) { display: none; }
+.sync-buttons .sync-signin { justify-self: stretch; justify-content: center; padding: 0 16px; }
+/* The email form opens under the Google button. */
+.sync-email { display: grid; gap: 8px; }
+.sync-email[hidden] { display: none; }
+.sync-email .name-input { width: 100%; box-sizing: border-box; font-size: 14px; height: 36px; }
+.sync-email-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 2px; }
+.sync-email-submit { padding: 0 18px; justify-content: center; }
+.sync-email-submit:disabled { opacity: 0.55; cursor: default; }
+.sync-email-reset { justify-self: start; color: var(--text-muted); font-size: 12.5px; }
+.sync-email-reset[hidden] { display: none; }
+.sync-email-note { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--text-muted); }
+.sync-email-note[data-error="true"] { color: #B4432F; }
+.sync-email-note[hidden] { display: none; }
+
+/* Several notes selected (⌘-click, ⌘A) ------------------------------------- */
+/* A picked note lifts a touch, takes a quiet ring just inside its edge, and
+   wears a small check in its top-left corner. */
+.note {
+  translate: 0 0;
+  scale: 1;
+  transition-property: translate, scale;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.note.is-selected { translate: 0 -3px; scale: 1.025; }
+.note.is-selected .note-paper {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--note-text) 55%, transparent);
+}
+.note.is-selected:not(.is-dragging) {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12)) drop-shadow(0 12px 18px var(--note-ambient));
+}
+.note-check {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 2px var(--bg);
+  pointer-events: none;
+  opacity: 0;
+  scale: 0.4;
+  transition: opacity 140ms ease, scale 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.note.is-selected .note-check { opacity: 1; scale: 1; }
+.note.is-leaving .note-check { display: none; }
+
+/* The bar: the same glass as the capture bar, floating just above it. */
+.select-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--keyboard) + var(--bar-height) + 34px + env(safe-area-inset-bottom));
+  z-index: 9700; /* over an open pile, too */
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+  animation: select-bar-in 300ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+.select-bar[hidden] { display: none; }
+.select-bar.is-closing { animation: select-bar-out 180ms ease-in both; pointer-events: none; }
+@keyframes select-bar-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+}
+@keyframes select-bar-out {
+  to { opacity: 0; transform: translateY(8px) scale(0.97); }
+}
+.select-count {
+  padding: 0 10px 0 10px;
+  color: var(--text);
+  font: 600 13.5px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.select-colors { display: flex; align-items: center; gap: 7px; padding: 0 8px 0 4px; }
+.select-swatch {
+  position: relative;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  background: var(--paper-yellow);
+  cursor: pointer;
+  transition: transform 140ms ease;
+}
+.select-swatch::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; }
+.select-swatch[data-color="pink"] { background: var(--paper-pink); }
+.select-swatch[data-color="blue"] { background: var(--paper-blue); }
+.select-swatch[data-color="green"] { background: var(--paper-green); }
+.select-swatch:hover { transform: scale(1.15); }
+.select-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--text); }
+.select-rule {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+.select-action, .select-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: 500 13px/1 var(--font-ui);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.select-action svg { opacity: 0.8; }
+.select-action:hover, .select-close:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.select-action.is-danger:hover { background: color-mix(in srgb, #C2412C 12%, transparent); color: #B4432F; }
+.select-close { width: 34px; padding: 0; justify-content: center; color: var(--text-muted); margin-left: 2px; }
+/* the toast makes room while the bar is up */
+body.has-selection .toast { margin-bottom: 56px; }
+/* Narrow screens: icons only. */
+@media (max-width: 760px) {
+  .select-action span { display: none; }
+  .select-action { padding: 0 10px; }
+  .select-colors { gap: 6px; padding: 0 4px; }
+}
+@media (max-width: 520px) {
+  .select-bar { gap: 0; padding: 5px; overflow-x: auto; scrollbar-width: none; }
+  .select-count { padding: 0 6px 0 8px; font-size: 13px; }
+  .select-colors { gap: 6px; padding: 0 4px; }
+  .select-swatch { width: 15px; height: 15px; }
+  .select-rule { display: none; }
+  .select-action { padding: 0 8px; }
+  .select-close { width: 30px; margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .select-bar, .select-bar.is-closing { animation: none; }
+  .note { transition: none; }
+}
+
+/* Drop targets while carrying a note ---------------------------------------- */
+/* The top bar comes up over the wall (and over an open pile) so the Tomorrow
+   tab can take a note; the trash and the box do the same over an open pile. */
+body.is-carrying .topbar { z-index: 8995; }
+body.is-carrying:has(#pile-spread:not([hidden])) :is(.topbar, .capture, .drop-zone) { z-index: 9550; }
+
+/* The Tomorrow tab, with a note held over it: it zooms in to meet the note. */
+.view-switch button {
+  transition: color 180ms ease, scale 420ms var(--spring-pop, cubic-bezier(0.34, 1.4, 0.64, 1)),
+              background-color 200ms ease, box-shadow 200ms ease;
+}
+.view-switch button.is-drop-target {
+  z-index: 2;
+  scale: 1.28;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--text) 28%, transparent), 0 8px 22px -6px rgba(0, 0, 0, 0.28);
+}
+.view-switch button.is-drop-target[aria-pressed="true"] { color: var(--text); }
+.view-switch button.is-drop-target span { display: inline !important; }
+.view-switch:has(.is-drop-target) { overflow: visible; }
+
+/* An open pile's bar, with a note held over it: it opens up to take it out. */
+.pile-bar { transition: scale 320ms var(--spring-pop, ease), box-shadow 200ms ease; }
+.pile-bar-drop { display: none; margin: 0 8px 0 4px; color: var(--text); font: 600 13px/1 var(--font-ui); }
+.pile-bar.is-drop-target {
+  scale: 1.06;
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    0 0 0 2px color-mix(in srgb, var(--text) 30%, transparent),
+    var(--glass-shadow);
+}
+.pile-bar.is-drop-target .pile-bar-drop { display: inline; }
+.pile-bar.is-drop-target :is(.pile-bar-hint, .pile-bar-count, .pile-bar-button) { display: none; }
+.pile-bar.is-drop-target { padding: 6px 16px; min-height: 44px; }
+
+/* Phones ------------------------------------------------------------------ */
+/* One hand, one thumb: the views are named, not just drawn; a tap on a note
+   opens its actions as a sheet from the bottom; Settings and Done today are
+   sheets too, pulled down to close; the capture bar gets the room it needs. */
+
+/* The note's sheet (menu.js): the right-click menu, made for a thumb. */
+.menu.is-sheet {
+  inset: auto 0 0 0;
+  width: auto;
+  min-width: 0;
+  max-height: 84dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 10px calc(12px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  font-size: 16px;
+  transform-origin: 50% 100%;
+  transition: opacity 160ms ease, translate 420ms var(--spring-glide, cubic-bezier(0.2, 0.7, 0.2, 1));
+}
+@starting-style {
+  .menu.is-sheet:popover-open { opacity: 1; scale: 1; translate: 0 100%; }
+}
+.menu.is-sheet::backdrop,
+:is(.settings, .done-panel)::backdrop { background: transparent; transition: background-color 240ms ease; }
+.menu.is-sheet:popover-open::backdrop { background: rgba(20, 16, 10, 0.18); }
+@starting-style {
+  .menu.is-sheet:popover-open::backdrop { background: transparent; }
+}
+.menu.is-sheet .menu-item { height: 50px; gap: 14px; padding: 0 14px; border-radius: 13px; }
+.menu.is-sheet .menu-item:active:not(:disabled) { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.menu.is-sheet .menu-icon { width: 20px; height: 20px; }
+.menu.is-sheet .menu-key { display: none; }
+.menu.is-sheet .menu-row { min-height: 52px; padding: 0 14px; gap: 10px; }
+.menu.is-sheet .menu-row-label { font-size: 15px; }
+.menu.is-sheet .menu-swatch { width: 30px; height: 30px; }
+.menu.is-sheet .menu-step { width: 38px; height: 38px; font-size: 18px; }
+.menu.is-sheet .menu-time { min-width: 64px; font-size: 15px; }
+.menu-sheet-head {
+  padding: 8px 4px 8px;
+  touch-action: none;
+  cursor: grab;
+}
+.menu-sheet-grab {
+  display: block;
+  width: 40px;
+  height: 5px;
+  margin: 0 auto 12px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+}
+.menu-sheet-text {
+  --paper: var(--paper-yellow);
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: linear-gradient(170deg, rgba(255, 255, 255, 0.22), rgba(0, 0, 0, 0.04)), var(--paper);
+  color: var(--note-text);
+  font: 19px/1.3 var(--font-note);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08), 0 6px 14px -8px var(--note-shadow);
+}
+.menu-sheet-head[data-color="pink"] .menu-sheet-text  { --paper: var(--paper-pink); }
+.menu-sheet-head[data-color="blue"] .menu-sheet-text  { --paper: var(--paper-blue); }
+.menu-sheet-head[data-color="green"] .menu-sheet-text { --paper: var(--paper-green); }
+
+/* An open pile's hint: one for a mouse, one for a finger. */
+.pile-bar-hint-touch { display: none; }
+@media (hover: none) {
+  .pile-bar-hint:not(.pile-bar-hint-touch) { display: none; }
+  .pile-bar-hint-touch { display: inline; }
+}
+
+/* On touch, a note's own color dots stay out of the way: its sheet has them. */
+@media (hover: none) {
+  .note .note-foot { display: none; }
+}
+
+@media (max-width: 600px) {
+  /* Top bar: the logo, the three views by name, the two small buttons. */
+  .topbar { padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(6px + env(safe-area-inset-right)); gap: 8px; }
+  .brand span { display: none; }
+  .view-switch { position: relative; left: auto; top: auto; transform: none; flex: 0 1 auto; margin: 0 auto; }
+  .view-switch button { height: 34px; padding: 0 11px; font-size: 13px; letter-spacing: -0.005em; }
+  .view-switch button svg { display: none; }
+  .view-switch button span { display: inline; }
+  .topbar-actions { gap: 0; }
+  .topbar-actions .icon-button { width: 38px; height: 40px; }
+
+  /* Capture bar: the trash and the box a bit smaller, so "What needs doing?" fits. */
+  .capture { gap: 8px; padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(10px + env(safe-area-inset-right)); }
+  .capture .trash, .capture .box { zoom: 0.86; }
+  .capture-input { padding-left: 48px; }
+  .capture-plus { left: 12px; }
+
+  /* Settings and Done today: sheets from the bottom. */
+  .panel:is(.settings, .done-panel) {
+    inset: auto 0 0 0;
+    width: auto;
+    max-width: none;
+    max-height: 86dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 30px 20px calc(22px + env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 24px 24px 0 0;
+    transition: opacity 160ms ease, translate 420ms var(--spring-glide, cubic-bezier(0.2, 0.7, 0.2, 1));
+  }
+  @starting-style {
+    .panel:is(.settings, .done-panel):popover-open { opacity: 1; translate: 0 100%; }
+  }
+  .panel:is(.settings, .done-panel)::after {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 40px;
+    height: 5px;
+    margin-left: -20px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--text) 22%, transparent);
+  }
+  :is(.settings, .done-panel):popover-open::backdrop { background: rgba(20, 16, 10, 0.18); }
+  .settings .name-input { height: 44px; font-size: 16px; }
+
+  /* An open pile: the bar wraps, and the hint gets a line of its own. */
+  .pile-bar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 4px;
+    width: min(360px, calc(100vw - 24px));
+    padding: 8px 8px 10px 16px;
+    border-radius: 22px;
+    white-space: normal;
+  }
+  .pile-bar-count { flex: 1 0 auto; }
+  .pile-bar .pile-bar-hint { order: 3; flex: 1 0 100%; margin: 2px 0 0; text-align: left; font-size: 12.5px; line-height: 1.35; }
+  .pile-bar-hint:not(.pile-bar-hint-touch) { display: block; }
+  .pile-bar-hint-touch { display: none; }
+  .pile-bar.is-drop-target { width: auto; }
+}
+@media (max-width: 600px) and (hover: none) {
+  .pile-bar-hint:not(.pile-bar-hint-touch) { display: none; }
+  .pile-bar .pile-bar-hint-touch { display: block; }
+}
+@media (max-width: 370px) {
+  .brand { display: none; }
+}
+
+/* The sheet's four big buttons: Done, Edit, Focus, Pin. */
+.menu-tiles { display: none; }
+.menu.is-sheet .menu-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.menu.is-sheet .menu-tile {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 72px;
+  padding: 0 4px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+.menu.is-sheet .menu-tile .menu-label { flex: none; }
+.menu.is-sheet .menu-tile .menu-icon { width: 22px; height: 22px; opacity: 0.85; }
+.menu.is-sheet .menu-tile:active { background: color-mix(in srgb, var(--text) 12%, transparent); scale: 0.97; }
+/* A sheet is a solid sheet of glass: the notes behind it shouldn't show through as color. */
+.menu.is-sheet { background: color-mix(in srgb, var(--surface) 90%, transparent); }
+@media (max-width: 380px) {
+  .capture { gap: 6px; }
+  .capture .trash, .capture .box { zoom: 0.78; }
+  .capture-input { padding-left: 42px; padding-right: 2px; }
+  .capture-plus { left: 9px; }
+}
+/* Phones: the greeting says where you are, so the top bar is just the views and the buttons. */
+@media (max-width: 600px) {
+  .brand { display: none; }
+  .topbar { padding-left: calc(12px + env(safe-area-inset-left)); }
+  .view-switch { margin: 0; }
+  .topbar-actions .chip { height: 34px; padding: 0 10px; }
+}
+@media (max-width: 400px) {
+  .view-switch button { padding: 0 9px; font-size: 12.5px; }
+  /* with the Done count showing, "What now?" steps aside (W, or the page menu, still has it) */
+  .topbar-actions:has(#done-chip:not([hidden])) #what-now { display: none; }
+}
+/* No keyboard on a phone: the toast's ⌘Z hint steps aside. */
+@media (hover: none) and (pointer: coarse) {
+  .toast-key { display: none; }
+  .toast .toast-action { padding-right: 14px; }
+}
+@media (max-width: 600px) {
+  .view-switch { flex: none; }
+  .topbar-actions .chip { white-space: nowrap; }
+}
+/* Phones: the Done chip is just the tick and the number. */
+@media (max-width: 600px) {
+  .topbar-actions #done-chip #done-count { display: none; }
+  .topbar-actions #done-chip::after { content: attr(data-n); }
+  .topbar-actions #done-chip { gap: 5px; padding: 0 11px 0 9px; }
+}
+/* Narrow phones: the selection's count is a small dark badge, so every action fits. */
+@media (max-width: 420px) {
+  .select-count { font-size: 0; padding: 0 4px 0 2px; }
+  .select-count::before {
+    content: attr(data-n);
+    display: grid;
+    place-items: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 6px;
+    border-radius: 13px;
+    background: var(--text);
+    color: var(--bg);
+    font: 600 13px/1 var(--font-ui);
+    font-variant-numeric: tabular-nums;
+  }
+  .select-colors { gap: 5px; padding: 0 2px; }
+  .select-action { padding: 0 7px; }
+}
+/* The wall scrolls under the top bar and the capture bar, never over them
+   (a note's z-index climbs each time it's put on top). */
+.topbar, .capture { z-index: 8000; }
+/* On touch, the ghost pin that shows on a focused note stays away: the note's sheet has Pin. */
+@media (hover: none) {
+  .note:not(.is-pinned) .note-pin { display: none; }
+}
+body.is-carrying:has(#pile-spread:not([hidden])) .topbar { z-index: 9560; }
+@media (max-width: 600px) {
+  .pile-bar.is-drop-target { width: min(360px, calc(100vw - 24px)); justify-content: center; text-align: center; }
+}
+
+/* Phones: once the wall (or a list) scrolls, the top bar gets a solid
+   backing, so the notes slide cleanly under it instead of showing blurred
+   through the switch and around the buttons. */
+@media (max-width: 600px), (hover: none) and (pointer: coarse) {
+  body.is-scrolled .topbar,
+  body[data-view].is-scrolled .topbar {
+    background: var(--bg);
+    -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+    box-shadow: 0 1px 0 var(--border), 0 8px 14px -10px rgb(0 0 0 / 0.12);
+  }
+  .topbar .view-switch {
+    -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+    background: var(--surface);
+  }
+}
+
+/* Carrying a note across the page never selects (and paints blue) the
+   greeting, the date or the tabs on the way. */
+.hello, .topbar, .drop-zone, .pile-bar { -webkit-user-select: none; user-select: none; }
+body.is-carrying, body.is-carrying * { -webkit-user-select: none !important; user-select: none !important; }
+
+/* The logo is a button: tap it to go back to the top of the wall. */
+button.brand {
+  margin: 0;
+  padding: 4px 6px 4px 2px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+button.brand:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+button.brand:active svg { scale: 0.92; }
+/* Phones: just the note, no name, ahead of the views. */
+@media (max-width: 600px) {
+  .brand { display: flex; padding: 6px; margin-left: -6px; }
+  .brand span { display: none; }
+  .topbar { padding-left: calc(10px + env(safe-area-inset-left)); gap: 4px; }
+}
+
+/* A note carried to the right edge must not make the page wider than the
+   screen (on a phone the whole page would shift and the Later box would be
+   cut off). The html rule alone isn't enough for mobile browsers. */
+body.is-carrying { overflow-x: clip; }
+
+/* A card's done circle stays a circle, even on the narrower Later cards:
+   the small buttons beside it give way instead. */
+.day-check { flex: none; aspect-ratio: 1; }
+.day-actions { min-width: 0; }
+.day-act { flex: 0 1 auto; min-width: 20px; }
+/* The narrowest phones: the logo, the three views, the ✓ count and the
+   settings button all on one line. */
+@media (max-width: 380px) {
+  .brand { padding: 5px 4px; margin-left: -4px; }
+  .brand svg { width: 20px; height: 20px; }
+  .view-switch button { padding: 0 6px; }
+  .topbar-actions { gap: 2px; }
+  .topbar-actions #done-chip { padding: 0 8px; }
+  #settings-toggle { width: 34px; }
 }

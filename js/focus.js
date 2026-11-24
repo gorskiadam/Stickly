@@ -1,9 +1,8 @@
 // focus.js — the Focus view: one note, large, with a timer, and nothing else.
 // For the moment when the whole wall is still too much to look at.
 //
-// It covers the whole window, and (unless turned off in Settings) the whole
-// screen too: the browser's real full screen, so nothing else is in sight.
-// F switches full screen on and off. ← and → move to the other notes on the
+// It covers the window. S turns on the browser's real full screen as well, so
+// nothing else is in sight (S again, or Esc, turns it off); F or Esc leaves. ← and → move to the other notes on the
 // wall without leaving; the line at the bottom says what's up next.
 //
 // A note with a time counts down from it (and chimes at zero, then keeps
@@ -49,7 +48,9 @@ let tickTimer = 0;
 
 export function initFocus() {
   // ui.js asks for the view with this event (F on a note, or its focus button).
-  document.addEventListener('stickly:focus', (event) => open(event.detail.id));
+  document.addEventListener('stickly:focus', (event) => open(event.detail.id, event.detail.fullscreen));
+  // S on the wall, with no note in mind: the whole app full screen.
+  document.addEventListener('stickly:fullscreen', toggleFullscreen);
   toggleButton.addEventListener('click', toggle);
   doneButton.addEventListener('click', finish);
   closeButton.addEventListener('click', () => dialog.close());
@@ -65,15 +66,16 @@ export function initFocus() {
   });
 }
 
-function open(id) {
+function open(id, fullscreen = false) {
   const note = findNote(id);
   if (!note) return;
   const already = dialog.open;
   show(note);
-  if (already) return;
-  dialog.showModal();
-  toggleButton.focus();
-  if (getState().settings.focusFullscreen && canFullscreen && !document.fullscreenElement) {
+  if (!already) {
+    dialog.showModal();
+    toggleButton.focus();
+  }
+  if (fullscreen && canFullscreen && !document.fullscreenElement) {
     document.documentElement.requestFullscreen({ navigationUI: 'hide' })
       .then(() => { wentFullscreen = true; }, () => { /* not allowed right now: the window will do */ });
   }
@@ -132,13 +134,14 @@ function toggleFullscreen() {
     wentFullscreen = false;
     document.exitFullscreen().catch(() => {});
   } else {
-    document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => { wentFullscreen = true; }, () => {});
+    // turned on inside Focus: leaving Focus turns it off again
+    document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => { wentFullscreen = dialog.open; }, () => {});
   }
 }
 
 /**
  * Space starts or pauses (unless a button has focus, which handles it).
- * ← → other notes, D done, F full screen.
+ * ← → other notes, D done, S full screen, F back to the wall.
  */
 function onKey(event) {
   if (isTyping(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -152,9 +155,12 @@ function onKey(event) {
   } else if (key === 'd') {
     event.preventDefault();
     finish();
-  } else if (key === 'f') {
+  } else if (key === 's') {
     event.preventDefault();
     toggleFullscreen();
+  } else if (key === 'f') {
+    event.preventDefault();
+    dialog.close();
   }
 }
 

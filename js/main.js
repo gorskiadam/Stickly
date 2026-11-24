@@ -15,6 +15,7 @@ import { initBinPeek } from './binpeek.js';
 import { initWhatNow } from './whatnow.js';
 import { initMenu } from './menu.js';
 import { initDays } from './days.js';
+import { initSync } from './sync.js';
 
 initFeedback();
 const updateToday = initToday();
@@ -29,6 +30,7 @@ initDone();
 initFocus();
 initDays();
 initCapture();
+initSync();
 initNewDay(); // last: its prompt sits on top of a fully drawn wall
 
 // Never lose notes silently: say so if the browser refuses to save.

@@ -11,7 +11,7 @@ import { bumpPile } from './later.js';
 import { offerUndo } from './feedback.js';
 import { crumple, binOpen } from './sound.js';
 import { crumpleShapes, creaseImage } from './paper.js';
-import { eat, setTrashOpen, throwPath, flightFrames, inside } from './trash.js';
+import { expectBall, ballLanded, restingSpot, throwPath, flightFrames, inside } from './trash.js';
 import { t, formatMinutes } from './strings.js';
 
 const bin = document.getElementById('trash');
@@ -74,11 +74,12 @@ function toggle() {
   place();
 }
 
-/** Sit just above the bin, lined up with its left edge. */
+/** Sit just above the bin, lined up with its left edge, with room for the
+ *  can to grow and its lid to swing open above it (not tucked under the panel). */
 function place() {
   const box = bin.getBoundingClientRect();
   panel.style.left = `${Math.max(12, box.left - 4)}px`;
-  panel.style.bottom = `${window.innerHeight - box.top + 12}px`;
+  panel.style.bottom = `${window.innerHeight - box.top + 12 + box.height * 0.75}px`;
 }
 
 /** One ball per deleted note. `tumble` makes them pop up out of the bin. */
@@ -257,7 +258,7 @@ async function emptyAll() {
     return { copy, from: { x: box.left + box.width / 2, y: box.top + box.height / 2 }, spin: Number(el.dataset.spin) || 0 };
   });
   panel.hidePopover();
-  setTrashOpen(true);
+  flyers.forEach(() => expectBall());
   crumple(0.3);
   // the can grows and opens first, so the balls aim at where it ends up
   await new Promise((resolve) => setTimeout(resolve, reducedMotion.matches ? 0 : 340));
@@ -266,24 +267,25 @@ async function emptyAll() {
   const flights = flyers.map(({ copy, from, spin }, i) => {
     can.layer.append(copy);
     // the same throw as a single note: a lob that drops past the lid, goes
-    // behind the can's front wall and stops on its floor
+    // behind the can's front wall and stops on its floor (a little higher
+    // each time, as they heap up). The lid stays open until the last is in.
     const fit = Math.min(1, can.fit / 50);
-    const path = throwPath(from, can.mouth, i);
-    const land = path.landAt(can.floor - (50 * fit) / 2 - (i % 3) * 4);
+    const spot = restingSpot(can, 50 * fit);
+    const path = throwPath(from, { x: spot.x, y: can.mouth.y }, i);
+    const land = path.landAt(spot.floor);
     const time = reducedMotion.matches ? 0 : path.duration * 0.9 * land;
     const frames = flightFrames(path, from, land, (u) => ` rotate(${(spin + u * 240).toFixed(1)}deg) scale(${(1 - (1 - fit) * Math.min(1, u)).toFixed(3)})`);
     return copy.animate(frames, {
       duration: time,
-      delay: reducedMotion.matches ? 0 : i * 95,
+      delay: reducedMotion.matches ? 0 : i * 110,
       easing: 'linear',
       fill: 'forwards',
-    }).finished.catch(() => {});
+    }).finished.catch(() => {}).then(() => ballLanded());
   });
   await Promise.all(flights);
-  setTimeout(() => can.layer.remove(), reducedMotion.matches ? 0 : 700);
+  setTimeout(() => can.layer.remove(), reducedMotion.matches ? 0 : 1100);
 
   emptyTrash();
-  eat();
   offerUndo(t('binEmptied'), 'trash');
   emptying = false;
 }

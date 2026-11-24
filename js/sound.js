@@ -21,19 +21,58 @@ function audio() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return null;
   context ||= new AudioContext();
-  if (context.state === 'suspended') context.resume();
+  // 'suspended' before the first tap; Safari also has 'interrupted' (a call, another tab, the lock screen)
+  if (context.state !== 'running') context.resume().catch(() => {});
   return context;
+}
+
+// On iPhone and iPad, Web Audio is silenced by the ring/silent switch unless
+// the page says its sounds are "playback", and on older versions unless an
+// <audio> element has played once, inside a tap. Both are done on the first
+// tap; the clip is a few milliseconds of silence.
+if (navigator.audioSession) {
+  try { navigator.audioSession.type = 'playback'; } catch { /* not allowed here */ }
+}
+let silentPlayed = false;
+function playSilence() {
+  if (silentPlayed) return;
+  silentPlayed = true;
+  const rate = 8000;
+  const samples = 80;
+  const bytes = new Uint8Array(44 + samples);
+  const view = new DataView(bytes.buffer);
+  const text = (at, str) => [...str].forEach((ch, i) => view.setUint8(at + i, ch.charCodeAt(0)));
+  text(0, 'RIFF'); view.setUint32(4, 36 + samples, true); text(8, 'WAVE'); text(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true);
+  text(36, 'data'); view.setUint32(40, samples, true);
+  bytes.fill(128, 44);
+  const el = new Audio(URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })));
+  el.setAttribute('playsinline', '');
+  el.play().catch(() => { silentPlayed = false; });
 }
 
 function unlock() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
+  if (!AudioContext || !getState().settings.sound) return;
   context ||= new AudioContext();
-  if (context.state !== 'running') context.resume().catch(() => {});
+  if (context.state !== 'running') {
+    context.resume().catch(() => {});
+    // an empty buffer played inside the tap wakes Safari's context for good
+    const nudge = context.createBufferSource();
+    nudge.buffer = context.createBuffer(1, 1, context.sampleRate);
+    nudge.connect(context.destination);
+    nudge.start(0);
+  }
+  playSilence();
 }
-for (const type of ['pointerdown', 'keydown', 'touchend']) {
+for (const type of ['pointerdown', 'keydown', 'touchend', 'click']) {
   window.addEventListener(type, unlock, { capture: true, passive: true });
 }
+// coming back to the tab: Safari leaves the context interrupted
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && context && context.state !== 'running') context.resume().catch(() => {});
+});
 
 /** One second of white noise, made once and reused. */
 function noiseBuffer(ctx) {
@@ -186,20 +225,25 @@ const SLAM_AT = 0.28; // the lid lands 36% into its 780 ms fall (styles.css, lid
  * knock with a little low body), and a faint second tap as it settles.
  * No ringing.
  */
-export function slam() {
+export function slam(withThump = true) {
   const ctx = audio();
   if (!ctx) return;
   const now = ctx.currentTime;
+  if (withThump) thud();
+  lidClose(ctx, now + SLAM_AT, 1);
+  lidClose(ctx, now + SLAM_AT + 0.075, 0.28); // it settles on the rim
+}
 
-  // the ball landing inside
-  const thump = new OscillatorNode(ctx, { type: 'sine', frequency: 150 });
+/** A crumpled ball landing inside the can: a soft, low paper thump. */
+export function thud() {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const thump = new OscillatorNode(ctx, { type: 'sine', frequency: 140 + Math.random() * 25 });
   thump.frequency.exponentialRampToValueAtTime(70, now + 0.12);
   thump.connect(envelope(ctx, now, 0.12, 0.004, 0.12)).connect(ctx.destination);
   thump.start(now);
   thump.stop(now + 0.18);
-
-  lidClose(ctx, now + SLAM_AT, 1);
-  lidClose(ctx, now + SLAM_AT + 0.075, 0.28); // it settles on the rim
 }
 
 /** One knock of the lid on the rim: `strength` 0–1. */
@@ -226,6 +270,67 @@ function lidClose(ctx, at, strength) {
   floor.connect(envelope(ctx, at, 0.18 * strength, 0.003, 0.09)).connect(ctx.destination);
   floor.start(at);
   floor.stop(at + 0.12);
+}
+
+// ---------- The Later box: cardboard, not metal ----------
+// The trash can is a lid on a hinge: a bright tick and a hollow tock. The box
+// is soft brown board: flaps that whump open with a dry scuff, a dull pat as
+// they fold down, and a deep, boxy thump when something drops inside.
+
+let lastBoxOpen = 0;
+
+/** Dry cardboard: filtered noise in a low-mid band, no ring. */
+function board(ctx, at, { freq = 700, q = 0.8, peak = 0.2, attack = 0.004, release = 0.08, length = 0.14 } = {}) {
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(ctx);
+  const band = new BiquadFilterNode(ctx, { type: 'bandpass', frequency: freq, Q: q });
+  const dull = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: freq * 2.2 });
+  src.connect(band).connect(dull).connect(envelope(ctx, at, peak, attack, release)).connect(ctx.destination);
+  src.start(at, Math.random() * 0.5);
+  src.stop(at + length);
+}
+
+/** The box's hollow: a short, low, quickly damped body. */
+function boxBody(ctx, at, from, to, peak, length) {
+  const body = new OscillatorNode(ctx, { type: 'sine', frequency: from });
+  body.frequency.exponentialRampToValueAtTime(to, at + length * 0.7);
+  body.connect(envelope(ctx, at, peak, 0.003, length * 0.8)).connect(ctx.destination);
+  body.start(at);
+  body.stop(at + length);
+}
+
+/** The flaps swinging open: a soft scuff of board on board and a little air, one flap just after the other. */
+export function boxOpen() {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  if (now - lastBoxOpen < 0.4) return; // hovering in and out shouldn't chatter
+  lastBoxOpen = now;
+  board(ctx, now, { freq: 520, q: 0.7, peak: 0.11, attack: 0.025, release: 0.12, length: 0.2 });
+  board(ctx, now + 0.06, { freq: 640, q: 0.7, peak: 0.09, attack: 0.02, release: 0.11, length: 0.18 });
+  // the air the flaps push aside
+  board(ctx, now + 0.01, { freq: 260, q: 0.5, peak: 0.07, attack: 0.04, release: 0.14, length: 0.22 });
+}
+
+/** The flaps folding down: two dull pats, matching the staggered fold in styles.css. */
+export function boxClose() {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  for (const [delay, strength] of [[0.2, 1], [0.27, 0.75]]) {
+    board(ctx, now + delay, { freq: 480, q: 1, peak: 0.16 * strength, attack: 0.002, release: 0.05, length: 0.08 });
+    boxBody(ctx, now + delay, 150, 95, 0.09 * strength, 0.09);
+  }
+}
+
+/** A note dropping in: paper on the cardboard floor, and the box answers with a deep, boxy thump. */
+export function boxLand() {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  board(ctx, now, { freq: 900, q: 0.6, peak: 0.14, attack: 0.002, release: 0.05, length: 0.08 });
+  boxBody(ctx, now, 118 + Math.random() * 12, 72, 0.17, 0.2);
+  board(ctx, now + 0.004, { freq: 210, q: 1.4, peak: 0.1, attack: 0.004, release: 0.12, length: 0.18 });
 }
 
 /** A note pressed onto the wall: a soft, papery slap with a little body. */

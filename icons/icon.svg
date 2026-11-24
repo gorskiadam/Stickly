@@ -1,8 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="13" fill="#F7F5F0"/>
-  <g transform="rotate(-5 32 32)">
-    <path d="M14.5 14.5h35v28.5l-6.5 6.5h-28.5z" fill="#FFE36E"/>
-    <path d="M49.5 43h-6.5v6.5z" fill="#E3BF3F"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs><filter id="lift" x="-30%" y="-30%" width="160%" height="170%">
+    <feDropShadow dx="0" dy="0.45" stdDeviation="0.55" flood-color="#5a4a1a" flood-opacity=".22"/></filter></defs>
+  <rect width="64" height="64" rx="14.4" fill="#FFFFFF"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="14.15" fill="none" stroke="#000" stroke-opacity=".09" stroke-width="1"/>
+  
+  <g transform="translate(32 32.5) scale(2.35) translate(-12 -12) rotate(-6 12 12)">
+    <path d="M5 3h14a2 2 0 0 1 2 2v9l-7 7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="#FFDD55" filter="url(#lift)"/>
+    <path d="M21 14h-5a2 2 0 0 0-2 2v5z" fill="#D9B02F"/>
   </g>
-  <circle cx="30.5" cy="15.5" r="2.6" fill="#BC3D28"/>
 </svg>
